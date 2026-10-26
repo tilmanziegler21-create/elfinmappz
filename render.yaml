@@ -1,0 +1,60 @@
+services:
+  - type: web
+    name: elfin-market-api
+    runtime: node
+    region: frankfurt
+    buildCommand: npm ci && npm run build:api
+    startCommand: npm run start:api
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: CITY_CODE
+        value: HH
+      - key: CITY_NAME
+        value: Hamburg
+      - key: BOT_MODE
+        value: webhook
+      - key: SHEETS_MODE
+        value: READ_ONLY
+      - key: SHEETS_READ_ONLY
+        value: "true"
+      - key: ENABLE_LIVE_WRITES
+        value: "false"
+      - key: ENABLE_LIVE_ORDERS
+        value: "false"
+      - key: TELEGRAM_TEST_MODE
+        value: "true"
+      - key: TELEGRAM_POLLING
+        value: "0"
+      - key: GOOGLE_APPLICATION_CREDENTIALS
+        value: /etc/secrets/google-service.json
+      - key: MINIAPP_PUBLIC_URL
+        sync: false
+      - key: PUBLIC_API_URL
+        sync: false
+      - key: FRONTEND_ORIGIN
+        sync: false
+      - key: GOOGLE_SHEETS_SPREADSHEET_ID
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_WEBHOOK_SECRET
+        sync: false
+      - key: TELEGRAM_TEST_IDS
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: ADMIN_TG_IDS
+        sync: false
+      - key: SUPPORT_TG_ID
+        sync: false
+
+  - type: web
+    name: elfin-market-frontend
+    runtime: static
+    buildCommand: npm ci --include=dev && npm run build:frontend
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_BASE_URL
+        sync: false

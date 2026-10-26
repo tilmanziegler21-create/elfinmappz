@@ -1,0 +1,50 @@
+{
+  "elfliq-watermelon": {
+    "sku": "",
+    "image": "/products/elfliq-watermelon.png",
+    "imageType": "transparent",
+    "scene": "liquid-float",
+    "accent": "melon",
+    "category": "liquids"
+  },
+  "chaser-lux-turbo-mint": {
+    "sku": "",
+    "image": "/assets/products/liquids/chaser-lux-turbo-mint.png",
+    "imageType": "transparent",
+    "scene": "liquid-float",
+    "accent": "mint",
+    "category": "liquids"
+  },
+  "chaser-fp-cherry": {
+    "sku": "",
+    "image": "/assets/products/liquids/chaser-fp-cherry.png",
+    "imageType": "transparent",
+    "scene": "liquid-float",
+    "accent": "cold",
+    "category": "liquids"
+  },
+  "hqd-grapey": {
+    "sku": "",
+    "image": "/assets/products/liquids/hqd-grapey.png",
+    "imageType": "transparent",
+    "scene": "liquid-float",
+    "accent": "grape",
+    "category": "liquids"
+  },
+  "vozol-strawberry-ice": {
+    "sku": "",
+    "image": "/assets/products/liquids/vozol-strawberry-ice.png",
+    "imageType": "transparent",
+    "scene": "liquid-float",
+    "accent": "frost",
+    "category": "liquids"
+  },
+  "xros-5-mini": {
+    "sku": "",
+    "image": "/assets/products/pods/xros-5-mini.png",
+    "imageType": "transparent",
+    "scene": "pod-float",
+    "accent": "pod",
+    "category": "pods"
+  }
+}

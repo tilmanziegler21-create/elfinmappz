@@ -1,0 +1,40 @@
+{
+  "name": "elfin-market",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": "22.x"
+  },
+  "scripts": {
+    "dev": "vite",
+    "server": "node server/index.js",
+    "build": "npm run build:frontend && npm run build:api",
+    "build:frontend": "tsc --noEmit && vite build",
+    "build:api": "node --check server/index.js",
+    "start:api": "node server/index.js",
+    "preview": "vite preview",
+    "check:render": "node server/check-render.mjs",
+    "telegram:webhook:setup": "node server/telegram-webhook.mjs",
+    "check:telegram": "node server/check-telegram.mjs",
+    "check:sheets": "node server/check-sheets.mjs",
+    "check:miniapp": "node server/check-miniapp.mjs",
+    "setup:hh-tabs": "node server/setup-hh-tabs.mjs",
+    "setup:test-sheet": "node server/setup-test-sheet.mjs"
+  },
+  "dependencies": {
+    "express": "^5.3.0",
+    "framer-motion": "^14.2.0",
+    "googleapis": "^186.0.0",
+    "jsonwebtoken": "^9.0.3",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4"
+  }
+}

@@ -1,0 +1,15 @@
+node_modules
+dist
+.DS_Store
+recordings
+data
+.env
+.env.*
+!.env.example
+service-account.json
+google-service.json
+*.secret.json
+credentials
+.data/
+*.log
+*-credentials.json
