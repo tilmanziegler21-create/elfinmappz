@@ -2,21 +2,19 @@
 
 Реальный деплой не выполнялся. Город HH / Hamburg. Запись в Google Sheets выключена. Дизайн не менялся.
 
-Сейчас git-корень — родительский каталог `ELF`, а `render.yaml` лежит в `elfin-market`. Для Blueprint нужен репозиторий, в корне которого находится этот файл. Либо публикуйте `elfin-market` отдельным приватным репозиторием, либо в Dashboard укажите Root Directory `elfin-market`.
+Репозиторий `elfinmappz` уже содержит приложение в корне, поэтому Root Directory в Render оставляйте пустым. Если подключить родительский каталог `ELF`, укажите Root Directory `elfin-market`.
 
 В Git не должны попасть `.env`, токен и `google-service.json`.
 
-## Сервисы
+## Сервис
 
-Оба из одного репозитория. Vite dev server на Render не запускается.
+Один Web Service. Vite dev server на Render не запускается. Express отдаёт собранный `dist` на `/` и API на `/api`.
 
 | Сервис | Тип | Команда |
 | --- | --- | --- |
-| `elfin-market-api` | Web Service, Node, Frankfurt | Build: `npm ci && npm run build:api` |
+| `elfin-market` | Web Service, Node, Frankfurt | Build: `npm ci --include=dev && npm run build` |
 | | | Start: `npm run start:api` |
 | | | Health: `/api/health` |
-| `elfin-market-frontend` | Static Site | Build: `npm ci --include=dev && npm run build:frontend` |
-| | | Каталог: `dist` |
 
 `build:api` только проверяет синтаксис `server/index.js`. `build:frontend` — `tsc --noEmit` и `vite build`. Node в `package.json`: `22.x`.
 
@@ -37,21 +35,23 @@ API слушает `process.env.PORT` на `0.0.0.0`. Локальный зап�
 | `ENABLE_LIVE_WRITES` | `false` |
 | `ENABLE_LIVE_ORDERS` | `false` |
 | `TELEGRAM_TEST_MODE` | `true` |
-| `GOOGLE_APPLICATION_CREDENTIALS` | `/etc/secrets/google-service.json` |
-| `MINIAPP_PUBLIC_URL` | `https://` адрес Static Site |
-| `PUBLIC_API_URL` | `https://` адрес Web Service, без `/` в конце |
-| `FRONTEND_ORIGIN` | тот же origin, что у Static Site |
+| `GOOGLE_SERVICE_ACCOUNT_EMAIL` | `client_email` из JSON-ключа |
+| `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` | `private_key` из JSON-ключа, с `BEGIN` и `END` |
+| `GOOGLE_APPLICATION_CREDENTIALS` | не задавать, если email и private key уже есть |
+| `MINIAPP_PUBLIC_URL` | `https://` адрес этого же Web Service |
+| `PUBLIC_API_URL` | тот же `https://` адрес, без `/` в конце |
+| `DATABASE_URL` | внутренний URL PostgreSQL Render. Без него заказы отвечают `503` |
 | `GOOGLE_SHEETS_SPREADSHEET_ID` | ID книги Hamburg, не книги «Muenchen» |
 | `TELEGRAM_BOT_TOKEN` | новый токен из BotFather `/token` |
 | `TELEGRAM_WEBHOOK_SECRET` | отдельная случайная строка |
 | `JWT_SECRET` | отдельная случайная строка |
 | `TELEGRAM_TEST_IDS` | свой Telegram id, пока тестовый режим включён |
 
-Secret File в Render: имя `google-service.json`. Это даёт путь `/etc/secrets/google-service.json`. Ключ не копировать в `dist` и не коммитить.
+JSON-файл на Render не обязателен. Если email и private key заданы, сервер их и использует. Secret File `google-service.json` нужен только как запасной путь, когда обеих переменных нет. Ключ не копировать в `dist` и не коммитить.
 
-## Переменная frontend
+## Frontend
 
-`VITE_API_BASE_URL` нужна на этапе сборки Static Site. Значение — публичный `https://` API, без завершающего слэша. Пустое значение оставляет относительный `/api` и годится только для локального Vite proxy. В production localhost не подставляется.
+Отдельный URL для frontend не нужен. `VITE_API_BASE_URL` оставляйте пустым: Mini App ходит на относительный `/api`. В production localhost не подставляется.
 
 Навигация идёт через hash (`#product/...`, `#/courier`). Отдельный rewrite History API не нужен.
 
@@ -77,14 +77,11 @@ npm run telegram:webhook:setup
 
 ## Хранение
 
-Заказы, пользователи, резервы, уведомления и журнал склада пишутся в `data/state.json`, `data/workbook.json` и `data/checkpoint.json`. На бесплатном Web Service этот диск временный: после деплоя и рестарта файлы пропадают. `setInterval` очистки резервов тоже не является надёжным планировщиком: бесплатный сервис засыпает через 15 минут без запросов.
+Локально заказы, пользователи, идемпотентность и уведомления лежат в `data/*.json`. На Render этот диск временный.
 
-Два рабочих варианта, бизнес-логика пока не переписывалась:
+Если задан `DATABASE_URL`, при старте сервер создаёт таблицу `elfin_state` и хранит туда тот же снимок. После рестарта снимок читается обратно. Подключение к PostgreSQL в этой среде не проверялось: локальной базы нет.
 
-1. Платный Web Service и persistent disk. Точку монтирования задать в `DATA_DIR` и в `RENDER_DISK_MOUNT`.
-2. Отдельный PostgreSQL. Это уже смена хранилища, её нельзя делать без копии текущих файлов.
-
-Пока диск временный, новые заказы на Render не переживут рестарт. Идемпотентность хранится в том же файле и тоже пропадает вместе с ним. После старта сервер один раз дочищает просроченные резервы и незакрытые складские шаги, если файл ещё на месте.
+Пока `DATABASE_URL` пуст, production отклоняет `POST /api/order/create`, `/confirm` и `/payment` с `ORDERS_NEED_DATABASE`. Живые заказы не включаются. Бесплатный сервис засыпает через 15 минут, поэтому интервал очистки резервов не заменяет базу.
 
 ## Проверка и откат
 

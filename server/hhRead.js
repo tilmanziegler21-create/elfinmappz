@@ -17,8 +17,8 @@ export async function readHamburgSources() {
   try {
     titles = await listSheetTitles();
   } catch (error) {
-    if (error.code === "SHEETS_NOT_CONFIGURED") throw error;
-    throw fail(error.code === "SHEETS_TIMEOUT" ? "SHEETS_TIMEOUT" : "SHEETS_ERROR", error.code === "SHEETS_TIMEOUT" ? 504 : 503);
+    if (["SHEETS_NOT_CONFIGURED", "SHEETS_AUTH_INCOMPLETE", "SHEETS_AUTH_INVALID", "SHEETS_TIMEOUT", "SHEETS_FAILED"].includes(error.code)) throw error;
+    throw fail("SHEETS_FAILED", 503);
   }
   const report = hhTabReport(titles);
   if (!report.ready) throw fail("SHEETS_HH_MISSING", 503);

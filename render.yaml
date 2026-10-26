@@ -1,9 +1,9 @@
 services:
   - type: web
-    name: elfin-market-api
+    name: elfin-market
     runtime: node
     region: frankfurt
-    buildCommand: npm ci && npm run build:api
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: npm run start:api
     healthCheckPath: /api/health
     envVars:
@@ -27,13 +27,13 @@ services:
         value: "true"
       - key: TELEGRAM_POLLING
         value: "0"
-      - key: GOOGLE_APPLICATION_CREDENTIALS
-        value: /etc/secrets/google-service.json
+      - key: GOOGLE_SERVICE_ACCOUNT_EMAIL
+        sync: false
+      - key: GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY
+        sync: false
       - key: MINIAPP_PUBLIC_URL
         sync: false
       - key: PUBLIC_API_URL
-        sync: false
-      - key: FRONTEND_ORIGIN
         sync: false
       - key: GOOGLE_SHEETS_SPREADSHEET_ID
         sync: false
@@ -45,16 +45,9 @@ services:
         sync: false
       - key: JWT_SECRET
         sync: false
+      - key: DATABASE_URL
+        sync: false
       - key: ADMIN_TG_IDS
         sync: false
       - key: SUPPORT_TG_ID
-        sync: false
-
-  - type: web
-    name: elfin-market-frontend
-    runtime: static
-    buildCommand: npm ci --include=dev && npm run build:frontend
-    staticPublishPath: dist
-    envVars:
-      - key: VITE_API_BASE_URL
         sync: false

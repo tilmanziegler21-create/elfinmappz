@@ -40,34 +40,46 @@ function readJsonFile(file) {
   return accountFromParsed(JSON.parse(fs.readFileSync(full, "utf8")));
 }
 
+function configError(code, message) {
+  const error = new Error(message);
+  error.status = 503;
+  error.code = code;
+  return error;
+}
+
 export function loadServiceAccount() {
+  const email = env("GOOGLE_SERVICE_ACCOUNT_EMAIL");
+  const rawKey = env("GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY");
+  if (email || rawKey) {
+    if (!email) throw configError("SHEETS_AUTH_INCOMPLETE", "GOOGLE_SERVICE_ACCOUNT_EMAIL missing");
+    if (!rawKey) throw configError("SHEETS_AUTH_INCOMPLETE", "GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY missing");
+    const key = normalizePrivateKey(rawKey);
+    if (!key.includes("-----BEGIN PRIVATE KEY-----") || !key.includes("-----END PRIVATE KEY-----")) {
+      throw configError("SHEETS_AUTH_INVALID", "GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY invalid");
+    }
+    return { email, key, method: "ENV" };
+  }
   const direct = env("GOOGLE_SERVICE_ACCOUNT_CREDENTIALS");
   if (direct) {
     if (direct.startsWith("{")) {
       const parsed = accountFromParsed(JSON.parse(direct));
-      if (parsed) return parsed;
+      if (parsed) return { ...parsed, method: "FILE" };
     } else {
       const parsed = readJsonFile(direct);
-      if (parsed) return parsed;
+      if (parsed) return { ...parsed, method: "FILE" };
     }
   }
   const b64 = env("GOOGLE_CREDENTIALS_BASE64");
   if (b64) {
     const parsed = accountFromParsed(JSON.parse(Buffer.from(b64, "base64").toString("utf8")));
-    if (parsed) return parsed;
+    if (parsed) return { ...parsed, method: "FILE" };
   }
   const jsonPath = env("GOOGLE_SERVICE_ACCOUNT_JSON_PATH") || env("GOOGLE_APPLICATION_CREDENTIALS");
   if (jsonPath) {
     const parsed = readJsonFile(jsonPath);
-    if (parsed) return parsed;
+    if (parsed) return { ...parsed, method: "FILE" };
   }
-  const email = env("GOOGLE_SERVICE_ACCOUNT_EMAIL") || env("GOOGLE_SHEETS_CLIENT_EMAIL");
-  const key = normalizePrivateKey(env("GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY") || env("GOOGLE_SHEETS_PRIVATE_KEY"));
-  if (email && key.includes("-----BEGIN PRIVATE KEY-----")) return { email, key };
-  const error = new Error("Sheets not configured");
-  error.status = 503;
-  error.code = "SHEETS_NOT_CONFIGURED";
-  throw error;
+  throw configError("SHEETS_NOT_CONFIGURED", "Sheets not configured");
 }
 
 function api() {
@@ -80,10 +92,10 @@ async function request(run) {
   try {
     return await run();
   } catch (error) {
-    if (error.code === "SHEETS_NOT_CONFIGURED") throw error;
+    if (["SHEETS_NOT_CONFIGURED", "SHEETS_AUTH_INCOMPLETE", "SHEETS_AUTH_INVALID"].includes(error.code)) throw error;
     const timeout = error.code === "ETIMEDOUT" || error.code === "ECONNABORTED";
-    const wrapped = new Error(timeout ? "SHEETS_TIMEOUT" : "SHEETS_ERROR");
-    wrapped.code = timeout ? "SHEETS_TIMEOUT" : "SHEETS_ERROR";
+    const wrapped = new Error(timeout ? "SHEETS_TIMEOUT" : "SHEETS_FAILED");
+    wrapped.code = timeout ? "SHEETS_TIMEOUT" : "SHEETS_FAILED";
     wrapped.status = timeout ? 504 : 503;
     throw wrapped;
   }

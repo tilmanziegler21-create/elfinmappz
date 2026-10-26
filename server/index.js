@@ -1,4 +1,7 @@
 import crypto from "crypto";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 import express from "express";
 import jwt from "jsonwebtoken";
 import { priceOrder } from "./pricing.js";
@@ -9,6 +12,7 @@ import {
   blankOrderRow,
   db,
   expireReservations,
+  hydrateStore,
   persist,
   releaseReservations,
   upsertOrderRow,
@@ -16,7 +20,7 @@ import {
   workbook,
 } from "./store.js";
 import { readHamburgSources } from "./hhRead.js";
-import { hhTabReport, listSheetTitles } from "./sheetsRead.js";
+import { hhTabReport, HH_TABS, listSheetTitles, loadServiceAccount, spreadsheetMeta } from "./sheetsRead.js";
 import { withMedia } from "./productMedia.js";
 import { enqueueNotice, trySendNotice } from "./notices.js";
 import { httpsUrl } from "./bot.js";
@@ -105,13 +109,18 @@ function localProducts() {
 }
 
 function sheetsFailure(error) {
-  const code = ["SHEETS_NOT_CONFIGURED", "SHEETS_HH_MISSING", "SHEETS_TIMEOUT", "SHEETS_INVALID"].includes(error.code)
+  const code = ["SHEETS_NOT_CONFIGURED", "SHEETS_AUTH_INCOMPLETE", "SHEETS_AUTH_INVALID", "SHEETS_HH_MISSING", "SHEETS_TIMEOUT", "SHEETS_INVALID", "SHEETS_FAILED"].includes(error.code)
     ? error.code
-    : "SHEETS_ERROR";
+    : "SHEETS_FAILED";
   return { status: code === "SHEETS_TIMEOUT" ? 504 : error.status || 503, body: { error: code, source: "unavailable" } };
 }
 
 function signUser(user) {
+  if (!JWT_SECRET) {
+    const error = new Error("JWT secret is not configured");
+    error.status = 500;
+    throw error;
+  }
   return jwt.sign({ tgId: user.tg_id }, JWT_SECRET, { expiresIn: "12h" });
 }
 
@@ -515,10 +524,19 @@ async function sheetsReady() {
 }
 
 function storageMode() {
+  if (String(process.env.DATABASE_URL || "").trim()) return "persistent";
   const mount = String(process.env.RENDER_DISK_MOUNT || "").trim();
   const dir = String(process.env.DATA_DIR || "").trim();
   if (mount && dir.startsWith(mount)) return "persistent";
   return "ephemeral";
+}
+
+function refuseEphemeralOrders(req, res, next) {
+  if (process.env.NODE_ENV === "production" && storageMode() !== "persistent") {
+    res.status(503).json({ error: "ORDERS_NEED_DATABASE" });
+    return;
+  }
+  next();
 }
 
 app.get("/api/ready", async (_req, res) => {
@@ -618,7 +636,7 @@ app.get("/api/couriers", requireAuth, async (req, res) => {
   }
 });
 
-app.post("/api/order/create", requireAuth, (req, res) => {
+app.post("/api/order/create", refuseEphemeralOrders, requireAuth, (req, res) => {
   const city = cityOf(req.body?.city);
   const items = req.body?.items;
   if (!city || !Array.isArray(items) || items.length === 0) return res.status(400).json({ error: "Invalid order data" });
@@ -722,7 +740,7 @@ app.post("/api/order/create", requireAuth, (req, res) => {
   res.json(payload);
 });
 
-app.post("/api/order/confirm", requireAuth, async (req, res) => {
+app.post("/api/order/confirm", refuseEphemeralOrders, requireAuth, async (req, res) => {
   const order = db().orders[String(req.body?.orderId || "")];
   const city = cityOf(req.body?.city || order?.city);
   if (!order || !city) return res.status(404).json({ error: "Order not found" });
@@ -752,7 +770,7 @@ app.post("/api/order/confirm", requireAuth, async (req, res) => {
   }
 });
 
-app.post("/api/order/payment", requireAuth, (req, res) => {
+app.post("/api/order/payment", refuseEphemeralOrders, requireAuth, (req, res) => {
   const orderId = String(req.body?.orderId || "");
   const order = db().orders[orderId];
   if (!order) return res.status(404).json({ error: "Order not found" });
@@ -1135,26 +1153,70 @@ app.post("/api/telegram/webhook", async (req, res) => {
   if (!res.headersSent) res.json({ ok: true });
 });
 
+function fileCredentialConfigured() {
+  const inline = String(process.env.GOOGLE_SERVICE_ACCOUNT_CREDENTIALS || "").trim();
+  if (inline.startsWith("{")) return true;
+  if (String(process.env.GOOGLE_CREDENTIALS_BASE64 || "").trim()) return true;
+  const jsonPath = String(process.env.GOOGLE_SERVICE_ACCOUNT_JSON_PATH || process.env.GOOGLE_APPLICATION_CREDENTIALS || inline || "").trim();
+  if (!jsonPath || jsonPath.startsWith("{")) return false;
+  return fs.existsSync(path.resolve(jsonPath));
+}
+
 function missingEnv() {
   if (process.env.NODE_ENV !== "production") return [];
-  return [
+  const names = [
     "CITY_CODE",
     "CITY_NAME",
     "MINIAPP_PUBLIC_URL",
     "PUBLIC_API_URL",
-    "FRONTEND_ORIGIN",
-    "GOOGLE_APPLICATION_CREDENTIALS",
     "GOOGLE_SHEETS_SPREADSHEET_ID",
     "TELEGRAM_BOT_TOKEN",
     "TELEGRAM_WEBHOOK_SECRET",
     "BOT_MODE",
     "JWT_SECRET",
-  ].filter((name) => !String(process.env[name] || "").trim());
+  ];
+  const email = String(process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || "").trim();
+  const key = String(process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || "").trim();
+  if (!(email && key) && !fileCredentialConfigured()) {
+    if (!email) names.push("GOOGLE_SERVICE_ACCOUNT_EMAIL");
+    if (!key) names.push("GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY");
+  }
+  return names.filter((name) => !String(process.env[name] || "").trim());
+}
+
+async function reportSheets() {
+  try {
+    const account = loadServiceAccount();
+    const meta = await spreadsheetMeta();
+    const missing = HH_TABS.filter((name) => !meta.titles.includes(name));
+    console.log(`Sheets auth: ${account.method}`);
+    console.log(`Spreadsheet: ${meta.title || "—"}`);
+    if (missing.length) console.error(`SHEETS_FAILED missing ${missing.join(", ")}`);
+  } catch (error) {
+    const code = ["SHEETS_NOT_CONFIGURED", "SHEETS_AUTH_INCOMPLETE", "SHEETS_AUTH_INVALID", "SHEETS_TIMEOUT", "SHEETS_FAILED"].includes(error.code)
+      ? error.code
+      : "SHEETS_FAILED";
+    console.error(`SHEETS_FAILED ${code}`);
+  }
 }
 
 let reservationTimer;
 
-if (process.env.NODE_ENV !== "test") {
+const distDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../dist");
+if (process.env.NODE_ENV === "production" && fs.existsSync(path.join(distDir, "index.html"))) {
+  app.use(express.static(distDir));
+  app.use((req, res, next) => {
+    if (req.method !== "GET" && req.method !== "HEAD") return next();
+    if (req.path.startsWith("/api")) return next();
+    res.sendFile(path.join(distDir, "index.html"), (error) => error && next());
+  });
+}
+
+async function boot() {
+  const mode = await hydrateStore();
+  console.log(`Storage: ${mode}`);
+  await reportSheets();
+  resumeStockMoves();
   try {
     expireReservations();
   } catch (error) {
@@ -1168,9 +1230,6 @@ if (process.env.NODE_ENV !== "test") {
     }
   }, 60 * 1000);
   reservationTimer.unref?.();
-}
-
-if (process.env.NODE_ENV !== "test") {
   const host = "0.0.0.0";
   const missing = missingEnv();
   if (missing.length) console.error(`Missing env: ${missing.join(", ")}`);
@@ -1199,6 +1258,10 @@ if (process.env.NODE_ENV !== "test") {
   }
 }
 
-resumeStockMoves();
+if (process.env.NODE_ENV === "test") resumeStockMoves();
+else boot().catch(() => {
+  console.error("Storage init failed");
+  process.exit(1);
+});
 
 export { app, expireReservations, resumeStockMoves };

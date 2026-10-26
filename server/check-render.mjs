@@ -6,7 +6,7 @@ import path from "path";
 
 const port = "10000";
 const env = { ...process.env, NODE_ENV: "production", PORT: port, CITY_CODE: "HH", CITY_NAME: "Hamburg", BOT_MODE: "webhook", TELEGRAM_WEBHOOK_SECRET: "render-check-secret", DATA_DIR: mkdtempSync(path.join(tmpdir(), "elfin-render-")) };
-for (const name of ["TELEGRAM_BOT_TOKEN", "TELEGRAM_POLLING", "GOOGLE_SHEETS_SPREADSHEET_ID", "GOOGLE_APPLICATION_CREDENTIALS", "GOOGLE_SERVICE_ACCOUNT_JSON_PATH", "GOOGLE_SERVICE_ACCOUNT_CREDENTIALS", "GOOGLE_CREDENTIALS_BASE64", "MINIAPP_PUBLIC_URL", "PUBLIC_API_URL", "FRONTEND_ORIGIN", "JWT_SECRET"]) {
+for (const name of ["TELEGRAM_BOT_TOKEN", "TELEGRAM_POLLING", "GOOGLE_SHEETS_SPREADSHEET_ID", "GOOGLE_APPLICATION_CREDENTIALS", "GOOGLE_SERVICE_ACCOUNT_JSON_PATH", "GOOGLE_SERVICE_ACCOUNT_CREDENTIALS", "GOOGLE_CREDENTIALS_BASE64", "GOOGLE_SERVICE_ACCOUNT_EMAIL", "GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY", "MINIAPP_PUBLIC_URL", "PUBLIC_API_URL", "FRONTEND_ORIGIN", "JWT_SECRET", "DATABASE_URL"]) {
   delete env[name];
 }
 
@@ -34,7 +34,15 @@ try {
   }
   add(output.includes(`0.0.0.0:${port}`), "API слушает 0.0.0.0:10000");
   add(output.includes("Missing env:"), "пустые production-переменные названы без значений");
+  add(!output.includes("GOOGLE_APPLICATION_CREDENTIALS"), "GOOGLE_APPLICATION_CREDENTIALS не требуется");
   add(!output.includes("private_key") && !/bot\d+:[A-Za-z0-9_-]{10}/.test(output), "в логе старта нет секретов");
+
+  const page = await fetch(`http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(3000) });
+  const html = await page.text();
+  add(page.ok && html.includes("id=\"root\""), "GET / отдаёт Mini App");
+
+  const blocked = await fetch(`http://127.0.0.1:${port}/api/order/create`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+  add(blocked.status === 503, "заказ без PostgreSQL в production отклонён");
 
   const health = await fetch(`http://127.0.0.1:${port}/api/health`, { signal: AbortSignal.timeout(3000) });
   const healthBody = await health.json();
@@ -68,6 +76,33 @@ try {
   await Promise.race([once(child, "exit"), new Promise((resolve) => setTimeout(resolve, 3000))]);
   if (child.exitCode == null) child.kill("SIGKILL");
 }
+
+const pairedEnv = {
+  ...env,
+  PORT: "10001",
+  JWT_SECRET: "render-check-jwt",
+  GOOGLE_SERVICE_ACCOUNT_EMAIL: "owner@example.com",
+  GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: "not-a-key",
+  GOOGLE_APPLICATION_CREDENTIALS: "/etc/secrets/google-service.json",
+  DATA_DIR: mkdtempSync(path.join(tmpdir(), "elfin-render-pair-")),
+};
+const paired = spawn(process.execPath, ["server/index.js"], { env: pairedEnv, stdio: ["ignore", "pipe", "pipe"] });
+let pairedOut = "";
+paired.stdout.on("data", (chunk) => {
+  pairedOut += chunk.toString();
+});
+paired.stderr.on("data", (chunk) => {
+  pairedOut += chunk.toString();
+});
+const pairedStarted = Date.now();
+while (!pairedOut.includes("0.0.0.0:10001") && Date.now() - pairedStarted < 8000) {
+  if (paired.exitCode != null) break;
+  await new Promise((resolve) => setTimeout(resolve, 100));
+}
+add(pairedOut.includes("0.0.0.0:10001") && !pairedOut.includes("GOOGLE_APPLICATION_CREDENTIALS") && !pairedOut.includes("render-check-jwt") && !pairedOut.includes("not-a-key"), "пара EMAIL и PRIVATE_KEY не требует файл ключа");
+paired.kill("SIGTERM");
+await Promise.race([once(paired, "exit"), new Promise((resolve) => setTimeout(resolve, 3000))]);
+if (paired.exitCode == null) paired.kill("SIGKILL");
 
 const tokenCheck = spawn(process.execPath, ["server/telegram-webhook.mjs"], {
   env: { ...env, TELEGRAM_BOT_TOKEN: "123456789:AAAAAAAAAAAAAAAAAAAA", PUBLIC_API_URL: "https://elfin-api.example" },

@@ -12,13 +12,16 @@
 | Sheets HH | FAILED |
 | Storage | EPHEMERAL |
 | Live Writes | DISABLED |
-| Render Blueprint | READY |
+| Render Blueprint | READY, один Web Service |
+| Public deploy | NOT DEPLOYED |
 
 `npm run build` прошёл: TypeScript, `dist/`, `node --check server/index.js`.
 
 `npm run check:render` на `PORT=10000` прошёл локально:
 
 - процесс слушает `0.0.0.0:10000`;
+- `GET /` отдаёт Mini App;
+- `POST /api/order/create` без `DATABASE_URL` получает `503`;
 - пустые production-переменные пишутся в лог только именами;
 - `GET /api/health` отвечает `city=HH`, `writes=false`;
 - `GET /api/ready` показывает Telegram `not configured` и диск `ephemeral`;
@@ -31,6 +34,6 @@
 
 Подключённая книга по-прежнему «Muenchen», вкладки `*_HH` отсутствуют. Каталог Hamburg не подменён. Запись в таблицу не включалась.
 
-Заказы лежат в локальных JSON-файлах `data/`. Для Render это временный диск, пока не подключён persistent disk или отдельная база. Миграция не запускалась.
+Заказы лежат в локальных JSON-файлах `data/`. При `DATABASE_URL` снимок пишется в PostgreSQL-таблицу `elfin_state`. База не подключена, поэтому сохранение после рестарта не проверено. В production без базы новые заказы отклоняются.
 
-`render.yaml` описывает Static Site и Web Service во Frankfurt. Секретов в файле нет.
+`render.yaml` описывает один Web Service во Frankfurt. Секретов в файле нет. На Render сервис не создавался.

@@ -13,7 +13,19 @@ function add(ok, text) {
 
 const note = envNote(notes, "TELEGRAM_BOT_TOKEN");
 const token = String(process.env.TELEGRAM_BOT_TOKEN || "").trim();
+const alias = String(process.env.BOT_TOKEN || "").trim();
 add(Boolean(token), token ? "TELEGRAM_BOT_TOKEN задан" : "TELEGRAM_BOT_TOKEN пуст");
+add(true, note.fromProcess ? "TELEGRAM_BOT_TOKEN уже был в process.env, файл его не перезаписал" : "TELEGRAM_BOT_TOKEN взят из файла окружения");
+add(!alias || alias === token, !alias ? "BOT_TOKEN отсутствует, сервер читает TELEGRAM_BOT_TOKEN" : alias === token ? "BOT_TOKEN совпадает с TELEGRAM_BOT_TOKEN" : "BOT_TOKEN отличается от TELEGRAM_BOT_TOKEN. Сервер использует только TELEGRAM_BOT_TOKEN");
+if (alias && alias !== token && /^\d{6,}:[A-Za-z0-9_-]{20,}$/.test(alias)) {
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${alias}/getMe`, { signal: AbortSignal.timeout(8000) });
+    const data = await response.json().catch(() => ({}));
+    add(false, data.ok ? "BOT_TOKEN принят Telegram, но сервер читает TELEGRAM_BOT_TOKEN" : `BOT_TOKEN getMe ${response.status}`);
+  } catch {
+    add(false, "BOT_TOKEN getMe не ответил");
+  }
+}
 add(!note.hadOuterSpace && !note.hasInnerSpace, note.hadOuterSpace || note.hasInnerSpace ? "в токене есть пробелы. Уберите их в окружении" : "пробелов в токене нет");
 add(true, note.quoted ? "кавычки вокруг токена сняты при чтении" : "кавычек вокруг токена нет");
 const format = /^\d{6,}:[A-Za-z0-9_-]{20,}$/.test(token);

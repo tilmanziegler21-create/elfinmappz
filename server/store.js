@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { hydrateFromPostgres, queueSnapshot } from "./pgState.js";
 
 const dataDir = process.env.DATA_DIR || path.join(process.cwd(), "data");
 const stateFile = path.join(dataDir, "state.json");
@@ -82,11 +83,32 @@ function loadPair() {
 const loaded = loadPair();
 const state = loaded.state;
 const sheet = loaded.sheet;
-if (!Object.keys(state.users || {}).length) state.users = seedUsers();
-if (!Array.isArray(state.stockMoves)) state.stockMoves = [];
-if (!Array.isArray(state.notices)) state.notices = [];
-if (!Array.isArray(state.tickets)) state.tickets = [];
-if (!sheet.products?.length) Object.assign(sheet, seedSheet());
+
+function ensureShape() {
+  if (!Object.keys(state.users || {}).length) state.users = seedUsers();
+  if (!Array.isArray(state.stockMoves)) state.stockMoves = [];
+  if (!Array.isArray(state.notices)) state.notices = [];
+  if (!Array.isArray(state.tickets)) state.tickets = [];
+  if (!sheet.products?.length) Object.assign(sheet, seedSheet());
+}
+
+function replaceContents(target, source) {
+  for (const key of Object.keys(target)) delete target[key];
+  Object.assign(target, source);
+}
+
+ensureShape();
+
+export async function hydrateStore() {
+  if (!String(process.env.DATABASE_URL || "").trim()) return "ephemeral";
+  const payload = await hydrateFromPostgres({ state, sheet });
+  if (payload?.state && payload?.sheet) {
+    replaceContents(state, payload.state);
+    replaceContents(sheet, payload.sheet);
+    ensureShape();
+  }
+  return "persistent";
+}
 
 export function persist() {
   fs.mkdirSync(dataDir, { recursive: true });
@@ -95,6 +117,7 @@ export function persist() {
   fs.renameSync(tmp, checkpointFile);
   writeJson(stateFile, state);
   writeJson(sheetFile, sheet);
+  if (String(process.env.DATABASE_URL || "").trim()) queueSnapshot({ state, sheet });
 }
 
 export function db() {

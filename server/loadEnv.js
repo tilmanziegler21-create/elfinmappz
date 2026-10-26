@@ -21,15 +21,17 @@ export function loadEnvFiles() {
       const key = line.slice(0, index).trim();
       const raw = line.slice(index + 1);
       const value = bare(raw);
+      const already = Boolean(process.env[key]);
       if (!notes[key]) {
         notes[key] = {
           hadOuterSpace: raw !== raw.trim(),
           quoted: raw.trim() !== value && raw.trim().length > 0,
           hasInnerSpace: /\s/.test(value),
           length: value.length,
+          fromProcess: already,
         };
       }
-      if (!process.env[key]) process.env[key] = value;
+      if (!already) process.env[key] = value;
     }
   }
   const jsonPath = process.env.GOOGLE_SERVICE_ACCOUNT_JSON_PATH;
@@ -40,5 +42,5 @@ export function loadEnvFiles() {
 }
 
 export function envNote(notes, key) {
-  return notes[key] || { hadOuterSpace: false, quoted: false, hasInnerSpace: false, length: String(process.env[key] || "").trim().length };
+  return notes[key] || { hadOuterSpace: false, quoted: false, hasInnerSpace: false, length: String(process.env[key] || "").trim().length, fromProcess: Boolean(process.env[key]) };
 }
