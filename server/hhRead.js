@@ -28,10 +28,25 @@ export async function readHamburgSources() {
   if (products.issues.some((item) => item.code === "MISSING_COLUMN")) throw fail("SHEETS_INVALID", 422);
   const rejectedSku = new Set(products.issues.filter((item) => item.level === "error" && item.sku).map((item) => item.sku));
   const rejectedCourier = new Set(couriers.issues.filter((item) => item.courierId).map((item) => item.courierId));
+  const keptCouriers = couriers.couriers.filter((item) => item.courier_id && !rejectedCourier.has(item.courier_id));
+  const issueCounts = {};
+  for (const item of couriers.issues) issueCounts[item.code] = (issueCounts[item.code] || 0) + 1;
+  const requiredCourierColumns = ["courier_id", "name", "tg_id", "active", "time_from", "time_to"];
+  const courierHeaders = couriersSheet.headers.map((header) => header.toLowerCase());
+  const activeIndex = courierHeaders.indexOf("active");
+  const inactive = activeIndex < 0 ? 0 : couriersSheet.rows.filter((row) => ["false", "0", "no", "n", "нет"].includes(String(row[activeIndex] ?? "").trim().toLowerCase())).length;
   const data = {
     products: products.products.filter((item) => item.active && item.sku && !rejectedSku.has(item.sku)),
     prices,
-    couriers: couriers.couriers.filter((item) => item.courier_id && !rejectedCourier.has(item.courier_id)),
+    couriers: keptCouriers,
+    courierSheet: {
+      tab: expected.find((name) => name.startsWith("couriers_")) || "couriers",
+      rows: couriersSheet.rows.length,
+      kept: keptCouriers.length,
+      inactive,
+      missingColumns: requiredCourierColumns.filter((name) => !courierHeaders.includes(name)),
+      issues: issueCounts,
+    },
     tabReport: report,
   };
   cache = { until: Date.now() + 30_000, data };

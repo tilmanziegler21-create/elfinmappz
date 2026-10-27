@@ -20,7 +20,7 @@ import {
   workbook,
 } from "./store.js";
 import { readHamburgSources } from "./hhRead.js";
-import { hhTabReport, listSheetTitles, loadServiceAccount, sheetTabs, spreadsheetMeta } from "./sheetsRead.js";
+import { hhTabReport, listSheetTitles, loadServiceAccount, sheetCode, sheetTabs, spreadsheetMeta } from "./sheetsRead.js";
 import { withMedia } from "./productMedia.js";
 import { enqueueNotice, trySendNotice } from "./notices.js";
 import { httpsUrl } from "./bot.js";
@@ -522,7 +522,15 @@ async function applyConfirm(order, next, data, courier) {
 }
 
 app.get("/api/health", (_req, res) => {
-  res.json({ ok: true, city: CITY, cityName: CITY_NAME, catalog: useLocalCatalog() ? "demo" : "sheets", writes: false });
+  res.json({
+    ok: true,
+    city: CITY,
+    cityName: CITY_NAME,
+    catalog: useLocalCatalog() ? "demo" : "sheets",
+    sheetCode: sheetCode(),
+    warehouseConfirmed: false,
+    writes: false,
+  });
 });
 
 let sheetsReadyCache = { at: 0, value: "unavailable" };
@@ -579,6 +587,8 @@ app.get("/api/config", (_req, res) => {
     cityName: CITY_NAME,
     devAuth: DEV_AUTH,
     catalog: useLocalCatalog() ? "demo" : "sheets",
+    sheetCode: sheetCode(),
+    warehouseConfirmed: false,
     loyalty: process.env.ENABLE_LOYALTY === "1",
     priceMatch: process.env.ENABLE_PRICE_MATCH === "1",
     liveOrders: process.env.ENABLE_LIVE_ORDERS === "1",
@@ -660,7 +670,13 @@ app.get("/api/couriers", async (req, res) => {
   }
   try {
     const data = await readHamburgSources();
-    res.json({ source: "sheets", city: "HH", couriers: data.couriers.map(buyerCourier) });
+    res.json({
+      source: "sheets",
+      city: "HH",
+      warehouseConfirmed: false,
+      couriers: data.couriers.map(buyerCourier),
+      courierSheet: data.courierSheet,
+    });
   } catch (error) {
     const failure = sheetsFailure(error);
     res.status(failure.status).json(failure.body);
