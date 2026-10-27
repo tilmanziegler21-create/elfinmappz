@@ -101,6 +101,11 @@ function useLocalCatalog() {
   return process.env.NODE_ENV === "test" && process.env.SHEETS_CATALOG !== "1";
 }
 
+async function shopCatalog() {
+  if (useLocalCatalog()) return { products: workbook().products, couriers: workbook().couriers };
+  return readHamburgSources();
+}
+
 function localProducts() {
   return workbook().products.map((item) => {
     const reserved = activeReservations(item.sku).reduce((sum, row) => sum + row.qty, 0);
@@ -287,8 +292,7 @@ function courierOrder(order) {
   };
 }
 
-async function notifyCourier(order) {
-  const courier = courierById(order.courier_id);
+async function notifyCourier(order, courier = courierById(order.courier_id)) {
   const text = [
     `Новый заказ ${order.id}`,
     `Время: ${order.delivery_time || ""}`,
@@ -338,14 +342,15 @@ function commitStock(order) {
     persist();
   }
   if (move.status !== "pending") return;
-  for (const line of move.lines) {
-    const product = workbook().products.find((row) => row.sku === line.sku);
-    if (!product) {
-      const error = new Error(`Product not found: ${line.sku}`);
-      error.status = 404;
-      throw error;
-    }
+  const localLines = move.lines.filter((line) => workbook().products.some((row) => row.sku === line.sku));
+  if (localLines.length === 0) {
+    move.status = "applied";
+    order.stock_committed = true;
+    releaseReservations(order.id);
+    persist();
+    return;
   }
+  move.lines = localLines;
   adjustStock(move.lines, -1);
   move.status = "applied";
   order.stock_committed = true;
@@ -459,10 +464,15 @@ function resumeStockMoves() {
   }
 }
 
-async function applyConfirm(order, next, data) {
+async function applyConfirm(order, next, data, courier) {
   if (order.delivery_locked) {
-    if (sameMeeting(order, next)) return { status: 200, payload: { success: true, status: normalizeStatus(order.status) } };
-    return { status: 409, payload: { error: "CONFIRM_CONFLICT" } };
+    if (!sameMeeting(order, next)) return { status: 409, payload: { error: "CONFIRM_CONFLICT" } };
+    if (!order.telegram_sent) {
+      const notice = await notifyCourier(order, courier);
+      order.telegram_sent = Boolean(notice?.sent);
+      persist();
+    }
+    return { status: 200, payload: { success: true, status: normalizeStatus(order.status), telegram: Boolean(order.telegram_sent) } };
   }
   const current = normalizeStatus(order.status);
   if (current === "cancelled" || current === "delivered") return { status: 409, payload: { error: "CONFIRM_CONFLICT" } };
@@ -491,11 +501,12 @@ async function applyConfirm(order, next, data) {
     item_count: String(orderItems(order.id).length),
     items_json: JSON.stringify(orderItems(order.id)),
   });
-  if (!order.courier_notified_at) {
-    order.courier_notified_at = new Date().toISOString();
-    await notifyCourier(order);
+  if (!order.courier_notified_at || !order.telegram_sent) {
+    order.courier_notified_at = order.courier_notified_at || new Date().toISOString();
+    const notice = await notifyCourier(order, courier);
+    order.telegram_sent = Boolean(notice?.sent);
   }
-  return { status: 200, payload: { success: true, status: order.status } };
+  return { status: 200, payload: { success: true, status: order.status, telegram: Boolean(order.telegram_sent) } };
 }
 
 app.get("/api/health", (_req, res) => {
@@ -529,14 +540,6 @@ function storageMode() {
   const dir = String(process.env.DATA_DIR || "").trim();
   if (mount && dir.startsWith(mount)) return "persistent";
   return "ephemeral";
-}
-
-function refuseEphemeralOrders(req, res, next) {
-  if (process.env.NODE_ENV === "production" && storageMode() !== "persistent") {
-    res.status(503).json({ error: "ORDERS_NEED_DATABASE" });
-    return;
-  }
-  next();
 }
 
 app.get("/api/ready", async (_req, res) => {
@@ -644,7 +647,7 @@ app.get("/api/couriers", async (req, res) => {
   }
 });
 
-app.post("/api/order/create", refuseEphemeralOrders, requireAuth, (req, res) => {
+app.post("/api/order/create", requireAuth, async (req, res) => {
   const city = cityOf(req.body?.city);
   const items = req.body?.items;
   if (!city || !Array.isArray(items) || items.length === 0) return res.status(400).json({ error: "Invalid order data" });
@@ -657,11 +660,19 @@ app.post("/api/order/create", refuseEphemeralOrders, requireAuth, (req, res) => 
     if (key) db().orderIdempotency[key] = { pending: true, expiresAt: Date.now() + 10 * 60 * 1000 };
   }
 
+  let catalog;
+  try {
+    catalog = await shopCatalog();
+  } catch (error) {
+    if (key) delete db().orderIdempotency[key];
+    const failure = sheetsFailure(error);
+    return res.status(failure.status).json(failure.body);
+  }
   const normalized = [];
   for (const item of items) {
     const sku = String(item.productId || "");
     const qty = Number(item.quantity);
-    const product = workbook().products.find((row) => row.sku === sku);
+    const product = catalog.products.find((row) => row.sku === sku);
     if (!product || !product.active) {
       if (key) delete db().orderIdempotency[key];
       return res.status(404).json({ error: `Product not found: ${sku}` });
@@ -748,14 +759,21 @@ app.post("/api/order/create", refuseEphemeralOrders, requireAuth, (req, res) => 
   res.json(payload);
 });
 
-app.post("/api/order/confirm", refuseEphemeralOrders, requireAuth, async (req, res) => {
+app.post("/api/order/confirm", requireAuth, async (req, res) => {
   const order = db().orders[String(req.body?.orderId || "")];
   const city = cityOf(req.body?.city || order?.city);
   if (!order || !city) return res.status(404).json({ error: "Order not found" });
   if (order.user_id !== req.user.tg_id) return res.status(403).json({ error: "Forbidden" });
   const method = String(req.body?.deliveryMethod || "");
   if (method !== "courier" && method !== "pickup") return res.status(400).json({ error: "Invalid delivery method" });
-  const courier = workbook().couriers.find((item) => item.active && item.courier_id === String(req.body?.courier_id || ""));
+  let catalog;
+  try {
+    catalog = await shopCatalog();
+  } catch (error) {
+    const failure = sheetsFailure(error);
+    return res.status(failure.status).json(failure.body);
+  }
+  const courier = catalog.couriers.find((item) => item.active && item.courier_id === String(req.body?.courier_id || ""));
   if (!courier) return res.status(400).json({ error: "Выберите курьера" });
   const time = String(req.body?.delivery_time || "");
   if (!slots(courier).includes(time)) return res.status(400).json({ error: "Выберите время" });
@@ -771,14 +789,14 @@ app.post("/api/order/confirm", refuseEphemeralOrders, requireAuth, async (req, r
     comment: String(data.comment || "").trim(),
   };
   try {
-    const result = await withOrderLock(order.id, () => applyConfirm(order, next, data));
+    const result = await withOrderLock(order.id, () => applyConfirm(order, next, data, courier));
     res.status(result.status).json(result.payload);
   } catch (error) {
     res.status(error.status || 500).json({ error: error.message || "Error" });
   }
 });
 
-app.post("/api/order/payment", refuseEphemeralOrders, requireAuth, (req, res) => {
+app.post("/api/order/payment", requireAuth, (req, res) => {
   const orderId = String(req.body?.orderId || "");
   const order = db().orders[orderId];
   if (!order) return res.status(404).json({ error: "Order not found" });

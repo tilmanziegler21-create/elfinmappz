@@ -1,6 +1,7 @@
 import { db, persist } from "./store.js";
 
 function testMode() {
+  if (process.env.NODE_ENV === "production") return false;
   return process.env.TELEGRAM_TEST_MODE !== "0";
 }
 

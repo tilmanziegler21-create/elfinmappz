@@ -52,6 +52,11 @@ export function CheckoutScreen({
     const panel = document.querySelector(".sheet-panel");
     if (!viewport || !(panel instanceof HTMLElement)) return;
     const fit = () => {
+      if (viewport.scale > 1) {
+        panel.style.maxHeight = "";
+        panel.style.marginBottom = "";
+        return;
+      }
       const keyboard = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
       panel.style.maxHeight = `${Math.max(320, viewport.height - 28)}px`;
       panel.style.marginBottom = `${keyboard}px`;
@@ -115,7 +120,7 @@ export function CheckoutScreen({
         createdId.current = created.orderId;
       }
       if (!confirmed.current) {
-        await api("/api/order/confirm", {
+        const confirmedBody = await api<{ telegram?: boolean }>("/api/order/confirm", {
           method: "POST",
           token,
           body: {
@@ -134,6 +139,12 @@ export function CheckoutScreen({
           },
         });
         confirmed.current = true;
+        if (confirmedBody.telegram === false) {
+          setBusy(false);
+          setPhase("form");
+          setError("Telegram не принял заказ.");
+          return;
+        }
       }
       await api("/api/order/payment", {
         method: "POST",
@@ -193,7 +204,7 @@ export function CheckoutScreen({
           </span>
         </div>
         <h2 className="empty-title">Заказ #{orderId}</h2>
-        <p className="empty-text">Передан выбранному курьеру. Уведомление записано локально, Telegram не отправлялся.</p>
+        <p className="empty-text">Курьер получил сообщение в Telegram.</p>
         <div className="empty-actions">
           <button type="button" className="btn btn-primary empty-cta" onClick={onOrders}>К заказам</button>
         </div>

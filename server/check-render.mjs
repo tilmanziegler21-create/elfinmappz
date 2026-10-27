@@ -42,7 +42,8 @@ try {
   add(page.ok && html.includes("id=\"root\""), "GET / отдаёт Mini App");
 
   const blocked = await fetch(`http://127.0.0.1:${port}/api/order/create`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
-  add(blocked.status === 503, "заказ без PostgreSQL в production отклонён");
+  const blockedBody = await blocked.json();
+  add(blocked.status !== 200 && !blockedBody.orderId, "заказ без сессии не создаётся");
 
   const health = await fetch(`http://127.0.0.1:${port}/api/health`, { signal: AbortSignal.timeout(3000) });
   const healthBody = await health.json();
