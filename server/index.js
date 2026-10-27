@@ -103,7 +103,12 @@ function useLocalCatalog() {
 
 async function shopCatalog() {
   if (useLocalCatalog()) return { products: workbook().products, couriers: workbook().couriers };
-  return readHamburgSources();
+  try {
+    return await readHamburgSources();
+  } catch (error) {
+    if (process.env.NODE_ENV === "production") throw error;
+    return { products: workbook().products, couriers: workbook().couriers };
+  }
 }
 
 function localProducts() {
@@ -178,6 +183,13 @@ function verifyInitData(initData) {
   const right = Buffer.from(calculated, "hex");
   if (left.length !== right.length || !crypto.timingSafeEqual(left, right)) {
     const error = new Error("Invalid hash");
+    error.status = 401;
+    throw error;
+  }
+  const authDate = Number(params.get("auth_date"));
+  const age = Date.now() / 1000 - authDate;
+  if (!Number.isFinite(authDate) || authDate <= 0 || age > 24 * 60 * 60 || age < -300) {
+    const error = new Error("Expired initData");
     error.status = 401;
     throw error;
   }
@@ -542,6 +554,14 @@ function storageMode() {
   return "ephemeral";
 }
 
+function refuseEphemeralOrders(req, res, next) {
+  if (process.env.NODE_ENV === "production" && storageMode() !== "persistent") {
+    res.status(503).json({ error: "ORDERS_NEED_DATABASE" });
+    return;
+  }
+  next();
+}
+
 app.get("/api/ready", async (_req, res) => {
   const telegram = process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_WEBHOOK_SECRET ? "configured" : "not configured";
   res.json({
@@ -647,7 +667,7 @@ app.get("/api/couriers", async (req, res) => {
   }
 });
 
-app.post("/api/order/create", requireAuth, async (req, res) => {
+app.post("/api/order/create", refuseEphemeralOrders, requireAuth, async (req, res) => {
   const city = cityOf(req.body?.city);
   const items = req.body?.items;
   if (!city || !Array.isArray(items) || items.length === 0) return res.status(400).json({ error: "Invalid order data" });
@@ -759,7 +779,7 @@ app.post("/api/order/create", requireAuth, async (req, res) => {
   res.json(payload);
 });
 
-app.post("/api/order/confirm", requireAuth, async (req, res) => {
+app.post("/api/order/confirm", refuseEphemeralOrders, requireAuth, async (req, res) => {
   const order = db().orders[String(req.body?.orderId || "")];
   const city = cityOf(req.body?.city || order?.city);
   if (!order || !city) return res.status(404).json({ error: "Order not found" });
@@ -796,7 +816,7 @@ app.post("/api/order/confirm", requireAuth, async (req, res) => {
   }
 });
 
-app.post("/api/order/payment", requireAuth, (req, res) => {
+app.post("/api/order/payment", refuseEphemeralOrders, requireAuth, (req, res) => {
   const orderId = String(req.body?.orderId || "");
   const order = db().orders[orderId];
   if (!order) return res.status(404).json({ error: "Order not found" });

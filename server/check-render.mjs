@@ -43,7 +43,7 @@ try {
 
   const blocked = await fetch(`http://127.0.0.1:${port}/api/order/create`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
   const blockedBody = await blocked.json();
-  add(blocked.status !== 200 && !blockedBody.orderId, "заказ без сессии не создаётся");
+  add(blocked.status === 503 && blockedBody.error === "ORDERS_NEED_DATABASE", "заказ без PostgreSQL в production отклонён");
 
   const health = await fetch(`http://127.0.0.1:${port}/api/health`, { signal: AbortSignal.timeout(3000) });
   const healthBody = await health.json();
