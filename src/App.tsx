@@ -15,8 +15,8 @@ import { OrdersScreen } from "./OrdersScreen";
 import { CountBump } from "./CountBump";
 import { ProductScreen } from "./ProductScreen";
 import { navIndicator } from "./productMotion";
-import { mediaBySku } from "./productMedia";
-import { CART_KEY, clampLineQty, defaultVariant, euro, findProduct, lineKey, products, readStoredCart, type Availability, type Product } from "./products";
+import { mediaByBrand } from "./productMedia";
+import { CART_KEY, clampLineQty, defaultVariant, euro, findProduct, lineKey, products, readLooseCart, sanitizeCart, setSheetCatalog, type Availability, type Product, type Variant } from "./products";
 import { ease, pageMove, sectionItem, sectionList, tapSpring } from "./motion";
 import { prewarmImages } from "./ImagePreloader";
 
@@ -34,25 +34,69 @@ type SheetRow = {
   image?: string;
 };
 
-function sheetToProduct(row: SheetRow): Product {
-  const closed = row.active === false || row.stock <= 0;
-  const availability: Availability = closed ? "out" : row.stock <= 2 ? "low" : "in";
-  const media = mediaBySku(row.sku);
-  const image = media?.image || row.image || undefined;
-  return {
-    id: row.sku || row.id,
-    name: row.brand || row.name,
-    flavor: row.name,
-    brand: row.brand,
-    category: row.category,
-    price: row.price,
-    availability,
-    featured: false,
-    description: "",
-    catalogImage: image,
-    heroImage: image,
-    variants: [{ id: row.sku || "1", label: "1", price: row.price, availability, stock: closed ? 0 : row.stock }],
-  };
+function lineName(brand: string) {
+  const value = brand.trim().toUpperCase().replace(/\s+/g, " ");
+  if (value.startsWith("ELFLIQ")) return "ELFLIQ";
+  if (value.startsWith("CHASER")) return "CHASER";
+  if (value.startsWith("VOZOL")) return "VOZOL";
+  if (value.startsWith("HQD")) return "HQD";
+  return value || "ELFIN";
+}
+
+function flavorCount(count: number) {
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+  const word = mod10 === 1 && mod100 !== 11 ? "вкус" : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14) ? "вкуса" : "вкусов";
+  return `${count} ${word}`;
+}
+
+function productSlug(name: string) {
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  return slug || "item";
+}
+
+function groupSheetRows(rows: SheetRow[]): Product[] {
+  const groups = new Map<string, SheetRow[]>();
+  for (const row of rows) {
+    const name = lineName(row.brand || "");
+    const list = groups.get(name) || [];
+    list.push(row);
+    groups.set(name, list);
+  }
+  return [...groups.values()].map((items) => {
+    const name = lineName(items[0].brand || "");
+    const flavors = items.map((row) => (row.name || "").trim());
+    const variants: Variant[] = items.map((row) => {
+      const closed = row.active === false || row.stock <= 0;
+      const availability: Availability = closed ? "out" : row.stock <= 2 ? "low" : "in";
+      const flavor = (row.name || row.sku).trim();
+      const repeated = flavors.filter((item) => item === flavor).length > 1;
+      return {
+        id: row.sku || flavor,
+        label: repeated ? `${flavor} · ${row.brand}` : flavor,
+        price: row.price,
+        availability,
+        stock: closed ? 0 : row.stock,
+      };
+    }).sort((a, b) => a.label.localeCompare(b.label, "ru"));
+    const open = variants.find((item) => item.availability !== "out" && item.stock > 0);
+    const stock = variants.reduce((sum, item) => sum + item.stock, 0);
+    const image = mediaByBrand(name)?.image;
+    return {
+      id: productSlug(name),
+      name,
+      flavor: variants.length === 1 ? variants[0].label : flavorCount(variants.length),
+      brand: name,
+      category: items[0].category,
+      price: open?.price ?? variants[0]?.price ?? 0,
+      availability: stock <= 0 ? "out" : open && open.stock <= 2 && variants.filter((item) => item.stock > 0).length === 1 ? "low" : "in",
+      featured: false,
+      description: "",
+      catalogImage: image,
+      heroImage: image,
+      variants,
+    };
+  });
 }
 
 const AGE_KEY = "elfin-age";
@@ -83,9 +127,8 @@ export function App() {
   );
   const [screen, setScreen] = useState<Screen>("home");
   const [productId, setProductId] = useState<string | null>(null);
-  const [boot] = useState(readStoredCart);
-  const [cart, setCart] = useState<Record<string, number>>(boot.cart);
-  const [cartAdjusted] = useState(boot.dropped);
+  const [cart, setCart] = useState<Record<string, number>>(readLooseCart);
+  const [cartAdjusted, setCartAdjusted] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [shopCity, setShopCity] = useState("HH");
   const [couriers, setCouriers] = useState<ApiCourier[]>([]);
@@ -109,6 +152,14 @@ export function App() {
     : { kicker: "ELFIN MARKET", title: "ELFIN", lede: "Подтвердите возраст" };
 
   const soft = reduce ? { initial: false as const } : pageMove;
+
+  function settleCart() {
+    setCart((current) => {
+      const next = sanitizeCart(current);
+      if (next.dropped) setCartAdjusted(true);
+      return next.cart;
+    });
+  }
 
   useEffect(() => {
     localStorage.setItem(CART_KEY, JSON.stringify(cart));
@@ -152,7 +203,11 @@ export function App() {
         if (!alive) return;
         setConfigReady(true);
         setShopCity(config.city || "HH");
-        setCatalogMode(config.catalog === "demo" ? "demo" : "loading");
+        if (config.catalog === "demo") {
+          setSheetCatalog([]);
+          settleCart();
+          setCatalogMode("demo");
+        } else setCatalogMode("loading");
         const initData = webApp?.initData;
         if (initData) {
           try {
@@ -224,7 +279,10 @@ export function App() {
             setCatalogMode("error");
             return;
           }
-          setLiveProducts(data.products.map(sheetToProduct));
+          const grouped = groupSheetRows(data.products);
+          setSheetCatalog(grouped);
+          setLiveProducts(grouped);
+          settleCart();
           setCatalogMode("live");
         })
         .catch(() => {
@@ -397,7 +455,7 @@ export function App() {
                   />
                 </div>
               ) : null}
-              {screen === "catalog" && productId && catalogMode === "demo" ? (
+              {screen === "catalog" && productId ? (
                 <ProductScreen productId={productId} cart={cart} onBack={closeProduct} onAdd={addToCart} />
               ) : null}
               {screen === "cart" ? (

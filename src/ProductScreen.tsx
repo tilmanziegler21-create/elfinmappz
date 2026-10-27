@@ -4,7 +4,7 @@ import { CountBump } from "./CountBump";
 import { preloadImages } from "./ImagePreloader";
 import { sectionLabel } from "./categoryRules";
 import { ProductFloatStage } from "./ProductFloatStage";
-import { mediaBySku, mediaFor } from "./productMedia";
+import { mediaByBrand, mediaBySku, mediaFor } from "./productMedia";
 import { VariantBottomSheet } from "./VariantBottomSheet";
 import { addPulse, liteMotion, productTap } from "./productMotion";
 import {
@@ -79,6 +79,11 @@ export function ProductScreen({
   }, [note]);
 
   useEffect(() => {
+    if (!product) return;
+    setVariantId((current) => (current && product.variants.some((item) => item.id === current) ? current : defaultVariant(product)?.id ?? null));
+  }, [product]);
+
+  useEffect(() => {
     const currentImage = findProduct(productId);
     preloadImages([currentImage?.heroImage], "soon");
     preloadImages(products.filter((item) => item.id !== productId).map((item) => item.heroImage), "idle");
@@ -108,7 +113,9 @@ export function ProductScreen({
   }
 
   const current = product;
-  const media = mediaFor(current.id) ?? mediaBySku(current.id);
+  const flavorChoice = current.variants.some((item) => item.label !== "—" && !/\d+\s*мл/i.test(item.label))
+    && !current.variants.some((item) => /\d+\s*мл/i.test(item.label));
+  const media = mediaFor(current.id) ?? mediaBySku(current.id) ?? mediaByBrand(current.brand || current.name);
   const preset = media?.scene ?? (current.id === "elfliq-watermelon" ? "liquid-float" as const : undefined);
   const accent = media?.accent ?? (current.id === "elfliq-watermelon" ? "melon" as const : undefined);
   const variant = current.variants.find((item) => item.id === variantId) ?? null;
@@ -174,7 +181,7 @@ export function ProductScreen({
         </div>
 
         <div className="product-copy">
-          <p className="product-kicker">{current.flavor}</p>
+          <p className="product-kicker">{flavorChoice ? (variant?.label ?? current.flavor) : current.flavor}</p>
           <div className="product-title-row">
             <h2 className="product-heading">{current.name}</h2>
             <button
@@ -199,7 +206,7 @@ export function ProductScreen({
           <p className={current.preview ? "stock" : `stock stock-${variant?.availability ?? "out"}`}>
             {current.preview ? "Образец" : availabilityLabel[variant?.availability ?? "out"]}
           </p>
-          <button type="button" className="variant-trigger" aria-label="Выбрать объём" onClick={() => setSheet(true)}>
+          <button type="button" className="variant-trigger" aria-label={flavorChoice ? "Выбрать вкус" : "Выбрать объём"} onClick={() => setSheet(true)}>
             <span>{variant?.label ?? "Выбрать"}</span>
             <strong>{current.preview || !variant ? "—" : euro(variant.price)}</strong>
           </button>
@@ -208,6 +215,7 @@ export function ProductScreen({
             variants={current.variants}
             selectedId={variantId}
             hideCommerce={current.preview}
+            kind={flavorChoice ? "вкус" : "объём"}
             onSelect={choose}
             onClose={() => setSheet(false)}
           />
@@ -216,8 +224,8 @@ export function ProductScreen({
           <h3 className="section-label">Характеристики</h3>
           <div className="facts">
             <div className="fact"><span>Категория</span><strong>{sectionLabel(current.category)}</strong></div>
-            <div className="fact"><span>Вкус</span><strong>{current.flavor}</strong></div>
-            <div className="fact"><span>Объём</span><strong>{variant?.label ?? "—"}</strong></div>
+            <div className="fact"><span>Вкус</span><strong>{flavorChoice ? (variant?.label ?? "—") : current.flavor}</strong></div>
+            {flavorChoice ? null : <div className="fact"><span>Объём</span><strong>{variant?.label ?? "—"}</strong></div>}
           </div>
 
           <h3 className="section-label">Количество</h3>

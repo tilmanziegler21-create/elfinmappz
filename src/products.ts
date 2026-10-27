@@ -229,8 +229,14 @@ export const availabilityLabel: Record<Availability, string> = {
   out: "Нет",
 };
 
+let sheetCatalog: Product[] = [];
+
+export function setSheetCatalog(items: Product[]) {
+  sheetCatalog = items;
+}
+
 export function findProduct(id: string) {
-  return products.find((item) => item.id === id) ?? null;
+  return sheetCatalog.find((item) => item.id === id) ?? products.find((item) => item.id === id) ?? null;
 }
 
 export function defaultVariant(product: Product) {
@@ -288,6 +294,25 @@ export function sanitizeCart(value: unknown): { cart: Record<string, number>; dr
     if (next) cart[key] = next;
   }
   return { cart, dropped };
+}
+
+export function readLooseCart(): Record<string, number> {
+  try {
+    const raw = localStorage.getItem(CART_KEY);
+    if (!raw) return {};
+    const value = JSON.parse(raw);
+    if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+    const cart: Record<string, number> = {};
+    for (const [key, rawQty] of Object.entries(value)) {
+      const qty = typeof rawQty === "number" && Number.isFinite(rawQty) ? Math.floor(rawQty) : 0;
+      const parts = key.split(":");
+      if (qty < 1 || parts.length !== 2 || !parts[0] || !parts[1]) continue;
+      cart[key] = qty;
+    }
+    return cart;
+  } catch {
+    return {};
+  }
 }
 
 export function readStoredCart(): { cart: Record<string, number>; dropped: boolean } {

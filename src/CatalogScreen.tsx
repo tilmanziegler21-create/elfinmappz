@@ -62,7 +62,8 @@ export function Catalog({
       const inQuery = needle.length === 0
         || item.name.toLowerCase().includes(needle)
         || item.flavor.toLowerCase().includes(needle)
-        || (item.brand || "").toLowerCase().includes(needle);
+        || (item.brand || "").toLowerCase().includes(needle)
+        || item.variants.some((variant) => variant.label.toLowerCase().includes(needle));
       return inSection && inBrand && inSaved && stockOk && inQuery;
     });
   }, [source, query, section, brand, savedOnly, saved, inStock]);
@@ -231,6 +232,7 @@ function ProductGrid({
       {items.map((item) => {
         const liked = saved.includes(item.id);
         const demo = mode === "demo";
+        const chooseFlavor = !demo && item.variants.length > 1;
         const blocked = item.availability === "out" || item.preview;
         return (
           <motion.article
@@ -265,16 +267,16 @@ function ProductGrid({
             <motion.button
               type="button"
               className="btn btn-primary product-cta"
-              disabled={!demo && blocked}
-              whileTap={reduce || (!demo && blocked) ? undefined : productTap}
+              disabled={!demo && !chooseFlavor && blocked}
+              whileTap={reduce || (!demo && !chooseFlavor && blocked) ? undefined : productTap}
               transition={tapSpring}
               onClick={(event) => {
                 event.stopPropagation();
-                if (demo || blocked) onOpen(item.id);
+                if (demo || chooseFlavor || blocked) onOpen(item.id);
                 else onAdd(item.id);
               }}
             >
-              {demo ? "Открыть" : blocked ? "Нет в наличии" : unitsFor(cart, item.id) ? `В корзине · ${unitsFor(cart, item.id)}` : "В корзину"}
+              {demo ? "Открыть" : chooseFlavor ? "Выбрать вкус" : blocked ? "Нет в наличии" : unitsFor(cart, item.id) ? `В корзине · ${unitsFor(cart, item.id)}` : "В корзину"}
             </motion.button>
           </motion.article>
         );

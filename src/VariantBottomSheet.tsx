@@ -9,6 +9,7 @@ export function VariantBottomSheet({
   variants,
   selectedId,
   hideCommerce,
+  kind = "объём",
   onSelect,
   onClose,
 }: {
@@ -16,6 +17,7 @@ export function VariantBottomSheet({
   variants: Variant[];
   selectedId: string | null;
   hideCommerce?: boolean;
+  kind?: "объём" | "вкус";
   onSelect: (variant: Variant) => void;
   onClose: () => void;
 }) {
@@ -67,7 +69,7 @@ export function VariantBottomSheet({
             ref={panelRef}
             role="dialog"
             aria-modal="true"
-            aria-label="Объём"
+            aria-label={kind === "вкус" ? "Вкус" : "Объём"}
             className="sheet"
             onClick={(event) => event.stopPropagation()}
             initial={reduce ? false : { y: "110%" }}
@@ -82,13 +84,13 @@ export function VariantBottomSheet({
                 ref={searchRef}
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Объём"
-                aria-label="Поиск объёма"
+                placeholder={kind === "вкус" ? "Вкус" : "Объём"}
+                aria-label={kind === "вкус" ? "Поиск вкуса" : "Поиск объёма"}
                 enterKeyHint="search"
               />
             </label>
-            <div className="sheet-list" role="listbox" aria-label="Объём">
-              {visible.length === 0 ? <p className="sheet-empty">Такого объёма нет.</p> : null}
+            <div className="sheet-list" role="listbox" aria-label={kind === "вкус" ? "Вкус" : "Объём"}>
+              {visible.length === 0 ? <p className="sheet-empty">{kind === "вкус" ? "Такого вкуса нет." : "Такого объёма нет."}</p> : null}
               {visible.map((item) => {
                 const closed = item.availability === "out" || item.stock <= 0;
                 const selected = item.id === selectedId;
