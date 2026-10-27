@@ -25,13 +25,13 @@ export async function readHamburgSources() {
   const products = normalizeProducts(productsSheet);
   const prices = normalizePrices(pricesSheet);
   const couriers = normalizeCouriers(couriersSheet);
-  if (products.issues.some((item) => item.level === "error") || couriers.issues.some((item) => item.level === "error")) {
-    throw fail("SHEETS_INVALID", 422);
-  }
+  if (products.issues.some((item) => item.code === "MISSING_COLUMN")) throw fail("SHEETS_INVALID", 422);
+  const rejectedSku = new Set(products.issues.filter((item) => item.level === "error" && item.sku).map((item) => item.sku));
+  const rejectedCourier = new Set(couriers.issues.filter((item) => item.courierId).map((item) => item.courierId));
   const data = {
-    products: products.products.filter((item) => item.active),
+    products: products.products.filter((item) => item.active && item.sku && !rejectedSku.has(item.sku)),
     prices,
-    couriers: couriers.couriers,
+    couriers: couriers.couriers.filter((item) => item.courier_id && !rejectedCourier.has(item.courier_id)),
     tabReport: report,
   };
   cache = { until: Date.now() + 30_000, data };
