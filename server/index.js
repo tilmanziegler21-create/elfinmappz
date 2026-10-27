@@ -615,21 +615,29 @@ app.get("/api/products/:id", async (req, res) => {
   }
 });
 
-app.get("/api/couriers", requireAuth, async (req, res) => {
+function buyerCourier(item) {
+  return {
+    courier_id: item.courier_id,
+    name: item.name,
+    time_from: item.time_from,
+    time_to: item.time_to,
+    meeting_place: item.meeting_place || "",
+    slots: slots(item),
+  };
+}
+
+app.get("/api/couriers", async (req, res) => {
   const city = cityOf(req.query.city || CITY);
   if (!city) return res.status(400).json({ error: "INVALID_CITY" });
   if (useLocalCatalog()) {
     return res.json({
       source: "demo",
-      couriers: workbook().couriers.filter((item) => item.active).map((item) => ({
-        ...item,
-        slots: slots(item),
-      })),
+      couriers: workbook().couriers.filter((item) => item.active).map(buyerCourier),
     });
   }
   try {
     const data = await readHamburgSources();
-    res.json({ source: "sheets", city: "HH", couriers: data.couriers });
+    res.json({ source: "sheets", city: "HH", couriers: data.couriers.map(buyerCourier) });
   } catch (error) {
     const failure = sheetsFailure(error);
     res.status(failure.status).json(failure.body);

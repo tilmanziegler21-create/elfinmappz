@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { AdminScreen } from "./AdminScreen";
-import { api, type ApiCourier, type Session } from "./api";
+import { api, type ApiCourier, type Session, type SessionUser } from "./api";
 import { BOOT_TIMEOUT_MS, bootPhase, bootProgress, WARM_KEY, type BootMarks } from "./boot";
 import { ElfinSplash } from "./components/ElfinSplash";
 import { CartScreen } from "./CartScreen";
@@ -100,6 +100,7 @@ function groupSheetRows(rows: SheetRow[]): Product[] {
 }
 
 const AGE_KEY = "elfin-age";
+const guestUser: SessionUser = { tgId: "", username: "", firstName: "", status: "customer" };
 
 const screens: { id: Screen; label: string; icon: IconName }[] = [
   { id: "home", label: "Главная", icon: "home" },
@@ -536,15 +537,15 @@ export function App() {
           </motion.nav>
         ) : null}
       </AnimatePresence>
-      {session && checkoutHeld ? (
+      {checkoutHeld ? (
         <div className={checkoutOpen ? "sheet-layer is-open" : "sheet-layer"} aria-hidden={!checkoutOpen} inert={!checkoutOpen ? true : undefined}>
           <button type="button" className="sheet-scrim" aria-label="Закрыть оформление" onClick={() => setCheckoutOpen(false)} />
           <div className="sheet-panel" role="dialog" aria-label="Оформление заказа">
             <CheckoutScreen
               cart={cart}
-              token={session.token}
-              city={session.city}
-              user={session.user}
+              token={session?.token ?? ""}
+              city={session?.city || shopCity}
+              user={session?.user ?? guestUser}
               couriers={couriers}
               onClearCart={() => setCart({})}
               onCatalog={() => { setCheckoutOpen(false); setScreen("catalog"); }}

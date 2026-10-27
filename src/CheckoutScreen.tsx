@@ -77,6 +77,10 @@ export function CheckoutScreen({
 
   async function submit() {
     if (busy || phase !== "form") return;
+    if (!token) {
+      setError("Откройте магазин в Telegram, чтобы подтвердить заказ.");
+      return;
+    }
     if (!courier) {
       setError("Выберите курьера.");
       return;
@@ -107,7 +111,7 @@ export function CheckoutScreen({
             city,
             promoCode: "",
             items: lines.map((line) => ({
-              productId: line.key,
+              productId: line.variant.id,
               quantity: line.qty,
               variant: line.variant.label,
             })),
@@ -153,7 +157,8 @@ export function CheckoutScreen({
     } catch (reason) {
       setBusy(false);
       setPhase("form");
-      setError(reason instanceof Error ? reason.message : "Ошибка запроса");
+      const message = reason instanceof Error ? reason.message : "";
+      setError(message === "ORDERS_NEED_DATABASE" ? "Заказ сейчас не сохраняется." : message || "Ошибка запроса");
     }
   }
 
