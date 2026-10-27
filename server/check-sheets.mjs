@@ -1,5 +1,5 @@
 import { loadEnvFiles } from "./loadEnv.js";
-import { HH_TABS, loadServiceAccount, readTab, spreadsheetMeta } from "./sheetsRead.js";
+import { loadServiceAccount, readTab, sheetTabs, spreadsheetMeta } from "./sheetsRead.js";
 import { normalizeProducts } from "./hhNormalize.js";
 
 const { loaded } = loadEnvFiles();
@@ -36,35 +36,32 @@ if (idRaw && authMethod !== "—") {
     title = meta.title || "—";
     add(true, `таблица «${meta.title}», locale ${meta.locale || "—"}, пояс ${meta.timeZone || "—"}`);
     add(true, `вкладки: ${meta.titles.join(", ")}`);
-    const muOnly = meta.titles.length > 0 && meta.titles.every((name) => name.endsWith("_MU"));
-    const hamburgTitle = /hamburg|гамбург|\bHH\b/i.test(meta.title);
-    if (muOnly && !hamburgTitle) {
-      add(false, "этот ID открывает книгу другого города. HH-вкладки здесь не создаются сами. В URL Hamburg возьмите фрагмент между /d/ и /edit и замените GOOGLE_SHEETS_SPREADSHEET_ID");
-    }
-    const missing = HH_TABS.filter((name) => !meta.titles.includes(name));
-    add(missing.length === 0, missing.length ? `нет вкладок: ${missing.join(", ")}` : "все вкладки HH на месте");
-    if (meta.titles.includes("products_HH")) {
-      const table = await readTab("products_HH");
+    const tabs = sheetTabs();
+    const [productTab, priceTab, courierTab] = tabs;
+    const missing = tabs.filter((name) => !meta.titles.includes(name));
+    add(missing.length === 0, missing.length ? `нет вкладок: ${missing.join(", ")}` : `все вкладки ${productTab.split("_").pop()} на месте`);
+    if (meta.titles.includes(productTab)) {
+      const table = await readTab(productTab);
       const normalized = normalizeProducts(table);
       const errors = normalized.issues.filter((item) => item.level === "error");
       products = String(table.rows.length);
-      add(table.headers.includes("sku") && table.headers.includes("price") && table.headers.includes("stock"), `заголовки products_HH: ${table.headers.join(", ") || "пусто"}`);
+      add(table.headers.includes("sku") && table.headers.includes("price") && table.headers.includes("stock"), `заголовки ${productTab}: ${table.headers.join(", ") || "пусто"}`);
       add(errors.length === 0, `товаров ${table.rows.length}, ошибок типа ${errors.length}`);
     } else {
-      add(false, "products_HH не прочитана: вкладки нет");
+      add(false, `${productTab} не прочитана: вкладки нет`);
     }
-    if (meta.titles.includes("LiquidPrices_HH")) {
-      const table = await readTab("LiquidPrices_HH");
-      add(true, `LiquidPrices_HH строк ${table.rows.length}`);
+    if (meta.titles.includes(priceTab)) {
+      const table = await readTab(priceTab);
+      add(true, `${priceTab} строк ${table.rows.length}`);
     } else {
-      add(false, "LiquidPrices_HH не прочитана: вкладки нет");
+      add(false, `${priceTab} не прочитана: вкладки нет`);
     }
-    if (meta.titles.includes("couriers_HH")) {
-      const table = await readTab("couriers_HH");
+    if (meta.titles.includes(courierTab)) {
+      const table = await readTab(courierTab);
       couriers = String(table.rows.length);
-      add(true, `couriers_HH строк ${table.rows.length}`);
+      add(true, `${courierTab} строк ${table.rows.length}`);
     } else {
-      add(false, "couriers_HH не прочитана: вкладки нет");
+      add(false, `${courierTab} не прочитана: вкладки нет`);
     }
   } catch (error) {
     const code = ["SHEETS_NOT_CONFIGURED", "SHEETS_AUTH_INCOMPLETE", "SHEETS_AUTH_INVALID", "SHEETS_TIMEOUT"].includes(error.code) ? error.code : "SHEETS_FAILED";

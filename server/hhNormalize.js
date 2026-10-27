@@ -60,7 +60,8 @@ export function normalizePrices({ headers, rows }) {
   const rules = [];
   rows.forEach((row) => {
     const city = cell(row, headers, "city");
-    if (city && city.toUpperCase() !== "HH") {
+    const sheetCity = String(process.env.SHEETS_TAB_CODE || "HG").trim().toUpperCase();
+    if (city && city.toUpperCase() !== "HH" && city.toUpperCase() !== sheetCity) {
       issues.push({ level: "error", code: "FOREIGN_CITY", city });
       return;
     }

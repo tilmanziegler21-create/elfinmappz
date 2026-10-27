@@ -3,7 +3,15 @@ import path from "path";
 import { google } from "googleapis";
 
 const SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"];
-const EXPECTED_TABS = ["products_HH", "LiquidPrices_HH", "couriers_HH", "orders_HH", "metrics_HH"];
+
+export function sheetCode() {
+  const code = String(process.env.SHEETS_TAB_CODE || "HG").trim().toUpperCase();
+  return /^[A-Z0-9]{2,3}$/.test(code) ? code : "HG";
+}
+
+export function sheetTabs(code = sheetCode()) {
+  return ["products", "LiquidPrices", "couriers", "orders", "metrics"].map((name) => `${name}_${code}`);
+}
 
 function env(name) {
   return String(process.env[name] || "").trim();
@@ -137,11 +145,12 @@ export async function listSheetTitles() {
 }
 
 export function hhTabReport(titles) {
+  const expected = sheetTabs();
   const found = new Set(titles);
   return {
     titles,
-    expected: EXPECTED_TABS.map((name) => ({ name, present: found.has(name) })),
-    ready: EXPECTED_TABS.every((name) => found.has(name)),
+    expected: expected.map((name) => ({ name, present: found.has(name) })),
+    ready: expected.every((name) => found.has(name)),
   };
 }
 
@@ -164,4 +173,4 @@ export async function readTab(title) {
   return { headers, rows };
 }
 
-export const HH_TABS = EXPECTED_TABS;
+export const HH_TABS = sheetTabs;

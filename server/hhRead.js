@@ -1,7 +1,5 @@
-import { hhTabReport, listSheetTitles, readTab } from "./sheetsRead.js";
+import { hhTabReport, listSheetTitles, readTab, sheetTabs } from "./sheetsRead.js";
 import { normalizeCouriers, normalizePrices, normalizeProducts } from "./hhNormalize.js";
-
-const EXPECTED = ["products_HH", "LiquidPrices_HH", "couriers_HH"];
 let cache = null;
 
 function fail(code, status) {
@@ -22,7 +20,8 @@ export async function readHamburgSources() {
   }
   const report = hhTabReport(titles);
   if (!report.ready) throw fail("SHEETS_HH_MISSING", 503);
-  const [productsSheet, pricesSheet, couriersSheet] = await Promise.all(EXPECTED.map((title) => readTab(title)));
+  const expected = sheetTabs().filter((name) => /^(products|LiquidPrices|couriers)_/.test(name));
+  const [productsSheet, pricesSheet, couriersSheet] = await Promise.all(expected.map((title) => readTab(title)));
   const products = normalizeProducts(productsSheet);
   const prices = normalizePrices(pricesSheet);
   const couriers = normalizeCouriers(couriersSheet);

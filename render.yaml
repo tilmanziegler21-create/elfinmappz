@@ -11,6 +11,8 @@ services:
         value: production
       - key: CITY_CODE
         value: HH
+      - key: SHEETS_TAB_CODE
+        value: HG
       - key: CITY_NAME
         value: Hamburg
       - key: BOT_MODE

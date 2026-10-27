@@ -20,7 +20,7 @@ import {
   workbook,
 } from "./store.js";
 import { readHamburgSources } from "./hhRead.js";
-import { hhTabReport, HH_TABS, listSheetTitles, loadServiceAccount, spreadsheetMeta } from "./sheetsRead.js";
+import { hhTabReport, listSheetTitles, loadServiceAccount, sheetTabs, spreadsheetMeta } from "./sheetsRead.js";
 import { withMedia } from "./productMedia.js";
 import { enqueueNotice, trySendNotice } from "./notices.js";
 import { httpsUrl } from "./bot.js";
@@ -1188,7 +1188,7 @@ async function reportSheets() {
   try {
     const account = loadServiceAccount();
     const meta = await spreadsheetMeta();
-    const missing = HH_TABS.filter((name) => !meta.titles.includes(name));
+    const missing = sheetTabs().filter((name) => !meta.titles.includes(name));
     console.log(`Sheets auth: ${account.method}`);
     console.log(`Spreadsheet: ${meta.title || "—"}`);
     if (missing.length) console.error(`SHEETS_FAILED missing ${missing.join(", ")}`);
