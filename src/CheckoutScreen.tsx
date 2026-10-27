@@ -46,7 +46,6 @@ export function CheckoutScreen({
   const [phase, setPhase] = useState<"form" | "loading" | "done">("form");
   const [orderId, setOrderId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const lockedPlace = fulfillment === "pickup" && Boolean(courier?.meeting_place);
 
   useEffect(() => {
     const viewport = window.visualViewport;
@@ -89,13 +88,9 @@ export function CheckoutScreen({
       setError("Выберите время.");
       return;
     }
-    const meeting = lockedPlace ? courier.meeting_place : place.trim();
+    const meeting = fulfillment === "pickup" ? (courier.meeting_place || "Самовывоз") : place.trim();
     if (fulfillment === "delivery" && meeting.length < 2) {
       setError("Укажите адрес.");
-      return;
-    }
-    if (fulfillment === "pickup" && meeting.length < 2) {
-      setError("Укажите точку встречи.");
       return;
     }
     setError(null);
@@ -206,8 +201,6 @@ export function CheckoutScreen({
     );
   }
 
-  const placeLabel = fulfillment === "delivery" ? "Адрес" : "Точка встречи";
-
   return (
     <div className="checkout-page order-sheet">
       {onClose ? (
@@ -218,8 +211,8 @@ export function CheckoutScreen({
       ) : null}
       <div className="checkout-scroll">
         <div className="order-seg" role="group" aria-label="Способ получения">
-          <button type="button" className={fulfillment === "pickup" ? "is-on" : ""} onClick={() => { setFulfillment("pickup"); setError(null); if (courier?.meeting_place) setPlace(courier.meeting_place); }}>Самовывоз</button>
-          <button type="button" className={fulfillment === "delivery" ? "is-on" : ""} onClick={() => { setFulfillment("delivery"); setError(null); }}>Доставка</button>
+          <button type="button" className={fulfillment === "pickup" ? "is-on" : ""} onClick={() => { setFulfillment("pickup"); setError(null); }}>Самовывоз</button>
+          <button type="button" className={fulfillment === "delivery" ? "is-on" : ""} onClick={() => { setFulfillment("delivery"); setError(null); }}>Адрес</button>
         </div>
         <label className="order-field">
           <span>Курьер</span>
@@ -238,19 +231,19 @@ export function CheckoutScreen({
           <span>Telegram или телефон</span>
           <input value={contact} onChange={(event) => setContact(event.target.value)} placeholder="@username или телефон" autoComplete="tel" />
         </label>
-        <div className="order-pair">
+        <label className="order-field">
+          <span>Время</span>
+          <select value={time} onChange={(event) => setTime(event.target.value)} disabled={!courier}>
+            <option value="">{courier ? "Время" : "Сначала курьер"}</option>
+            {slots.map((slot) => <option key={slot} value={slot}>{slot}</option>)}
+          </select>
+        </label>
+        {fulfillment === "delivery" ? (
           <label className="order-field">
-            <span>Время</span>
-            <select value={time} onChange={(event) => setTime(event.target.value)} disabled={!courier}>
-              <option value="">{courier ? "Время" : "Сначала курьер"}</option>
-              {slots.map((slot) => <option key={slot} value={slot}>{slot}</option>)}
-            </select>
+            <span>Адрес</span>
+            <input value={place} onChange={(event) => setPlace(event.target.value)} placeholder="Адрес" autoComplete="street-address" />
           </label>
-          <label className="order-field">
-            <span>{placeLabel}</span>
-            <input value={lockedPlace ? courier?.meeting_place || "" : place} readOnly={lockedPlace} onChange={(event) => setPlace(event.target.value)} placeholder={placeLabel} />
-          </label>
-        </div>
+        ) : null}
         <label className="order-field">
           <span>Комментарий</span>
           <textarea value={comment} onChange={(event) => setComment(event.target.value)} maxLength={200} placeholder="Необязательно" />
@@ -267,7 +260,7 @@ export function CheckoutScreen({
           <span>Товары</span>
           <strong>{euro(total)}</strong>
           <span>Получение</span>
-          <strong>—</strong>
+          <strong>{fulfillment === "pickup" ? "Самовывоз" : "Адрес"}</strong>
           <span className="is-total">Итого</span>
           <strong className="is-total">{euro(total)}</strong>
         </div>
