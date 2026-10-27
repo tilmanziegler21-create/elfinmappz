@@ -583,7 +583,7 @@ app.post("/api/auth/telegram", (req, res) => {
   }
 });
 
-app.get("/api/catalog", requireAuth, async (req, res) => {
+app.get("/api/catalog", async (req, res) => {
   const city = cityOf(req.query.city || CITY);
   if (!city) return res.status(400).json({ error: "INVALID_CITY" });
   if (useLocalCatalog()) return res.json({ source: "demo", city, products: localProducts() });
@@ -596,7 +596,7 @@ app.get("/api/catalog", requireAuth, async (req, res) => {
   }
 });
 
-app.get("/api/products/:id", requireAuth, async (req, res) => {
+app.get("/api/products/:id", async (req, res) => {
   const city = cityOf(req.query.city || CITY);
   if (!city) return res.status(400).json({ error: "INVALID_CITY" });
   if (useLocalCatalog()) {

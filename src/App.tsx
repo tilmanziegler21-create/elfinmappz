@@ -87,6 +87,7 @@ export function App() {
   const [cart, setCart] = useState<Record<string, number>>(boot.cart);
   const [cartAdjusted] = useState(boot.dropped);
   const [session, setSession] = useState<Session | null>(null);
+  const [shopCity, setShopCity] = useState("HH");
   const [couriers, setCouriers] = useState<ApiCourier[]>([]);
   const [catalogMode, setCatalogMode] = useState<"loading" | "demo" | "live" | "error">("loading");
   const [liveProducts, setLiveProducts] = useState<Product[]>([]);
@@ -150,13 +151,18 @@ export function App() {
       .then(async (config) => {
         if (!alive) return;
         setConfigReady(true);
+        setShopCity(config.city || "HH");
         setCatalogMode(config.catalog === "demo" ? "demo" : "loading");
         const initData = webApp?.initData;
         if (initData) {
-          const next = await api<Session>("/api/auth/telegram", { method: "POST", body: { initData } });
-          if (!alive) return;
-          setSession({ ...next, city: config.city });
-          setAuthReady(true);
+          try {
+            const next = await api<Session>("/api/auth/telegram", { method: "POST", body: { initData } });
+            if (!alive) return;
+            setSession({ ...next, city: config.city });
+          } catch {
+            /* Каталог открывается и без сессии. */
+          }
+          if (alive) setAuthReady(true);
           return;
         }
         if (!config.devAuth) {
@@ -204,9 +210,14 @@ export function App() {
     };
     open();
     window.addEventListener("hashchange", open);
+    return () => window.removeEventListener("hashchange", open);
+  }, [session]);
+
+  useEffect(() => {
+    if (!configReady || catalogMode === "demo" || catalogMode === "error") return;
     let alive = true;
     if (catalogMode === "loading") {
-      api<{ source?: string; products?: SheetRow[] }>(`/api/catalog?city=${encodeURIComponent(session.city)}`, { token: session.token })
+      api<{ source?: string; products?: SheetRow[] }>(`/api/catalog?city=${encodeURIComponent(shopCity)}`, { token: session?.token })
         .then((data) => {
           if (!alive) return;
           if (data.source !== "sheets" || !Array.isArray(data.products)) {
@@ -220,18 +231,17 @@ export function App() {
           if (alive) setCatalogMode("error");
         });
     }
-    api<{ couriers: ApiCourier[] }>(`/api/couriers?city=${encodeURIComponent(session.city)}`, { token: session.token })
+    api<{ couriers?: ApiCourier[] }>(`/api/couriers?city=${encodeURIComponent(shopCity)}`, { token: session?.token })
       .then((data) => {
-        if (alive) setCouriers(catalogMode === "demo" && data.couriers ? data.couriers : []);
+        if (alive) setCouriers(Array.isArray(data.couriers) ? data.couriers : []);
       })
       .catch(() => {
         if (alive) setCouriers([]);
       });
     return () => {
       alive = false;
-      window.removeEventListener("hashchange", open);
     };
-  }, [session, catalogMode]);
+  }, [configReady, catalogMode, shopCity, session?.token]);
 
   useEffect(() => {
     const read = () => {
