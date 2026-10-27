@@ -16,7 +16,7 @@ import { CountBump } from "./CountBump";
 import { ProductScreen } from "./ProductScreen";
 import { navIndicator } from "./productMotion";
 import { mediaBySku } from "./productMedia";
-import { CART_KEY, clampLineQty, defaultVariant, findProduct, lineKey, products, readStoredCart, type Availability, type Product } from "./products";
+import { CART_KEY, clampLineQty, defaultVariant, euro, findProduct, lineKey, products, readStoredCart, type Availability, type Product } from "./products";
 import { ease, pageMove, sectionItem, sectionList, tapSpring } from "./motion";
 import { prewarmImages } from "./ImagePreloader";
 
@@ -384,7 +384,7 @@ export function App() {
               className={screen === "home" || screen === "catalog" ? "panel panel-home" : screen === "cart" || screen === "checkout" || screen === "orders" || screen === "courier" || screen === "admin" ? "panel panel-cart" : "panel"}
               {...soft}
             >
-              {screen === "home" ? <Home onOpen={setScreen} onProduct={openProduct} onCart={() => setScreen("cart")} cartCount={cartCount} token={session?.token ?? null} city={session?.city || "HH"} /> : null}
+              {screen === "home" ? <Home onOpen={setScreen} onProduct={openProduct} onCart={() => setScreen("cart")} cartCount={cartCount} token={session?.token ?? null} city={shopCity} shelf={catalogMode === "live" ? liveProducts.slice(0, 4) : []} live={catalogMode === "live"} /> : null}
               {screen === "catalog" ? (
                 <div className={productId ? "screen-hold" : undefined}>
                   <Catalog
@@ -542,6 +542,8 @@ function Home({
   cartCount,
   token,
   city,
+  shelf,
+  live,
 }: {
   onOpen: (screen: Screen) => void;
   onProduct: (id: string) => void;
@@ -549,10 +551,12 @@ function Home({
   cartCount: number;
   token: string | null;
   city: string;
+  shelf: Product[];
+  live: boolean;
 }) {
   const reduce = useReducedMotion();
   const [terms, setTerms] = useState(false);
-  const shelf = products.filter((item) => shopSection(item.category)).slice(0, 4);
+  const cards = live ? shelf : products.filter((item) => shopSection(item.category)).slice(0, 4);
   const stage = typeof document !== "undefined" ? document.querySelector(".stage") : null;
   return (
     <motion.div
@@ -590,16 +594,16 @@ function Home({
       </motion.div>
       <motion.div className="catalog home-vitrine" variants={sectionItem}>
         <div className="home-shelf-head">
-          <h2>Каталог <span className="home-demo">DEMO</span></h2>
+          <h2>Каталог {live ? null : <span className="home-demo">DEMO</span>}</h2>
           <button type="button" className="home-all" onClick={() => onOpen("catalog")}>Смотреть всё</button>
         </div>
         <div className="shelf">
-          {shelf.map((item) => (
-            <button key={item.id} type="button" className="product home-card" onClick={() => onProduct(item.id)}>
+          {cards.map((item) => (
+            <button key={item.id} type="button" className="product home-card" onClick={() => live ? onOpen("catalog") : onProduct(item.id)}>
               <HomeArt item={item} />
               <span className="product-name">{item.brand || item.name}</span>
               <span className="product-flavor">{item.flavor}</span>
-              <span className="product-price"><strong>—</strong></span>
+              <span className="product-price"><strong>{live ? euro(item.price) : "—"}</strong></span>
             </button>
           ))}
         </div>
