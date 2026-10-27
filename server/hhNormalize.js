@@ -1,4 +1,7 @@
-const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
+function clock(value) {
+  const match = String(value || "").trim().match(/^([01]\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?$/);
+  return match ? `${match[1]}:${match[2]}` : "";
+}
 
 function cell(row, headers, name) {
   const index = headers.findIndex((header) => header.toLowerCase() === name.toLowerCase());
@@ -97,8 +100,8 @@ export function normalizeCouriers({ headers, rows }) {
     const courierId = cell(row, headers, "courier_id");
     const tgId = cell(row, headers, "tg_id");
     const active = bool(cell(row, headers, "active"));
-    const timeFrom = cell(row, headers, "time_from");
-    const timeTo = cell(row, headers, "time_to");
+    const timeFrom = clock(cell(row, headers, "time_from"));
+    const timeTo = clock(cell(row, headers, "time_to"));
     if (!courierId && !cell(row, headers, "name")) return;
     if (!courierId) issues.push({ level: "error", code: "EMPTY_COURIER", row: index + 2 });
     if (courierId && ids.has(courierId)) issues.push({ level: "error", code: "DUPLICATE_COURIER", courierId });
@@ -106,7 +109,7 @@ export function normalizeCouriers({ headers, rows }) {
     if (tgId && telegrams.has(tgId)) issues.push({ level: "error", code: "DUPLICATE_TG", tgId });
     if (tgId) telegrams.add(tgId);
     if (active === null) issues.push({ level: "error", code: "BAD_ACTIVE", courierId });
-    if (!TIME.test(timeFrom) || !TIME.test(timeTo) || timeFrom >= timeTo) issues.push({ level: "error", code: "BAD_TIME", courierId });
+    if (!timeFrom || !timeTo || timeFrom >= timeTo) issues.push({ level: "error", code: "BAD_TIME", courierId });
     couriers.push({
       courier_id: courierId,
       name: cell(row, headers, "name"),
@@ -114,6 +117,7 @@ export function normalizeCouriers({ headers, rows }) {
       active: active === true,
       time_from: timeFrom,
       time_to: timeTo,
+      meeting_place: cell(row, headers, "treffpunkt") || cell(row, headers, "meeting_place"),
     });
   });
   return { couriers: couriers.filter((item) => item.active), issues };

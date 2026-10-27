@@ -34,13 +34,7 @@ export async function readHamburgSources() {
   const requiredCourierColumns = ["courier_id", "name", "tg_id", "active", "time_from", "time_to"];
   const courierHeaders = couriersSheet.headers.map((header) => header.toLowerCase());
   const activeIndex = courierHeaders.indexOf("active");
-  const fromIndex = courierHeaders.indexOf("time_from");
-  const toIndex = courierHeaders.indexOf("time_to");
   const inactive = activeIndex < 0 ? 0 : couriersSheet.rows.filter((row) => ["false", "0", "no", "n", "нет"].includes(String(row[activeIndex] ?? "").trim().toLowerCase())).length;
-  const timeSamples = couriersSheet.rows.slice(0, 5).map((row) => ({
-    from: fromIndex < 0 ? "" : String(row[fromIndex] ?? "").trim(),
-    to: toIndex < 0 ? "" : String(row[toIndex] ?? "").trim(),
-  }));
   const data = {
     products: products.products.filter((item) => item.active && item.sku && !rejectedSku.has(item.sku)),
     prices,
@@ -52,7 +46,6 @@ export async function readHamburgSources() {
       inactive,
       missingColumns: requiredCourierColumns.filter((name) => !courierHeaders.includes(name)),
       issues: issueCounts,
-      timeSamples,
     },
     tabReport: report,
   };

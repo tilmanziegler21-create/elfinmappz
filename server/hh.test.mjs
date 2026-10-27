@@ -81,10 +81,12 @@ const couriers = normalizeCouriers({
     ["c1", "Дубль", "101", "TRUE", "12:00", "18:00"],
     ["c2", "Тихий", "100", "FALSE", "18:00", "23:00"],
     ["c3", "Ночь", "102", "TRUE", "25:00", "26:00"],
+    ["c4", "Секунды", "103", "TRUE", "16:30:00", "18:30:00"],
   ],
 });
 record("courier-checks", couriers.issues.some((item) => item.code === "DUPLICATE_COURIER") && couriers.issues.some((item) => item.code === "DUPLICATE_TG") && couriers.issues.some((item) => item.code === "BAD_TIME"));
 record("active-only", couriers.couriers.every((item) => item.active) && couriers.couriers.some((item) => item.courier_id === "c2") === false);
+record("clock-seconds", couriers.couriers.some((item) => item.courier_id === "c4" && item.time_from === "16:30" && item.time_to === "18:30"));
 
 function applyEnvFile(file) {
   if (!file || !fs.existsSync(file)) return;
