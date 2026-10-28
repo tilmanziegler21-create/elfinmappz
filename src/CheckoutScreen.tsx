@@ -164,7 +164,7 @@ export function CheckoutScreen({
       setBusy(false);
       setPhase("form");
       const message = reason instanceof Error ? reason.message : "";
-      setError(message === "ORDERS_NEED_DATABASE" ? "Заказ сейчас не сохраняется." : message || "Ошибка запроса");
+      setError(message === "ORDERS_NEED_DATABASE" ? "Демонстрационный режим: заказ не сохраняется, пока не подключена база." : message || "Ошибка запроса");
     }
   }
 
@@ -263,10 +263,11 @@ export function CheckoutScreen({
       <div className="order-dock">
         {error ? <p className="checkout-error" role="alert">{error}</p> : null}
         <div className="pay-row" role="group" aria-label="Оплата">
-          <button type="button" className="pay-tile is-on" aria-pressed="true">Наличные</button>
-          <button type="button" className="pay-tile" disabled>Карта</button>
-          <button type="button" className="pay-tile" disabled>Крипто</button>
+          <button type="button" className="pay-tile is-on" aria-pressed="true" title="Оплата наличными при встрече">Наличные</button>
+          <button type="button" className="pay-tile" disabled title="Карта в демонстрационном режиме недоступна">Карта</button>
+          <button type="button" className="pay-tile" disabled title="Крипто в демонстрационном режиме недоступна">Крипто</button>
         </div>
+        <p className="cart-caption">Карта и крипто недоступны. Оплата наличными при встрече.</p>
         <div className="order-sum">
           <span>Товары</span>
           <strong>{euro(total)}</strong>

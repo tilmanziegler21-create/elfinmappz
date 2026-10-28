@@ -26,6 +26,7 @@ import { enqueueNotice, trySendNotice } from "./notices.js";
 import { httpsUrl } from "./bot.js";
 import { language } from "./botCopy.js";
 import { dispatchUpdate, runPolling } from "./botPoll.js";
+import { courierSlots } from "./slots.js";
 
 const PORT = Number(process.env.PORT || 8787);
 const CITY = String(process.env.CITY_CODE || "HH").trim();
@@ -248,11 +249,7 @@ function courierForUser(user) {
 }
 
 function slots(courier) {
-  const from = Number(String(courier.time_from).slice(0, 2));
-  const to = Number(String(courier.time_to).slice(0, 2));
-  const list = [];
-  for (let hour = from; hour < to; hour += 1) list.push(`${String(hour).padStart(2, "0")}:00`);
-  return list;
+  return courierSlots(courier);
 }
 
 function maskPhone(phone) {

@@ -4,6 +4,7 @@ import path from "path";
 import { normalizeCouriers, normalizePrices, normalizeProducts } from "./hhNormalize.js";
 import { brandGroup, priceCategory, sectionLabel } from "./categoryRules.js";
 import { calculateOrderPricing, priceOrder } from "./pricing.js";
+import { courierSlots } from "./slots.js";
 
 process.env.NODE_ENV = "test";
 process.env.SHEETS_CATALOG = "1";
@@ -19,6 +20,11 @@ function record(name, ok, detail = "") {
   if (!ok) failures.push(`${name} ${detail}`);
   console.log(`${ok ? "PASS" : "FAIL"} ${name}${detail ? ` ${detail}` : ""}`);
 }
+
+const halfShift = courierSlots({ time_from: "16:30", time_to: "18:30" });
+const wholeShift = courierSlots({ time_from: "12:00", time_to: "18:00" });
+record("slot-half-hour", halfShift.join(",") === "17:00,18:00" && halfShift.includes("16:00") === false, halfShift.join(","));
+record("slot-whole-hour", wholeShift[0] === "12:00" && wholeShift.at(-1) === "17:00" && wholeShift.includes("18:00") === false, wholeShift.join(","));
 
 const headers = ["sku", "name", "category", "brand", "price", "stock", "active"];
 const good = normalizeProducts({
