@@ -198,8 +198,8 @@ function authFailureCode(error) {
 
 function noticeResultCode(notice) {
   if (notice?.sent) return "SENT";
-  const known = ["TEST_RECIPIENT_BLOCKED", "NO_TOKEN", "NO_RECIPIENT", "TELEGRAM_REJECTED", "TIMEOUT", "TELEGRAM_ERROR"];
-  return known.includes(notice?.last_error) ? notice.last_error : "NOT_SENT";
+  const code = String(notice?.last_error || "");
+  return /^[A-Z0-9_]{1,40}$/.test(code) ? code : "NOT_SENT";
 }
 
 function requireAuth(req, res, next) {
@@ -388,7 +388,29 @@ function courierOrder(order) {
   };
 }
 
-async function notifyCourier(order, courier = courierById(order.courier_id)) {
+function tgPresence(value) {
+  const tg = String(value || "").trim();
+  if (!tg) return "missing";
+  if (!/^\d+$/.test(tg)) return "not_numeric";
+  return "present";
+}
+
+function telegramFailureCode(status, description) {
+  const text = String(description || "").toLowerCase();
+  if (text.includes("bot was blocked")) return "BOT_BLOCKED";
+  if (text.includes("chat not found")) return "CHAT_NOT_FOUND";
+  if (text.includes("can't initiate") || text.includes("cant initiate")) return "CHAT_NOT_STARTED";
+  const http = Number(status || 0);
+  if (http) return `HTTP_${http}`;
+  return "TELEGRAM_REJECTED";
+}
+
+async function notifyCourier(order, courier = courierById(order.courier_id), requestId) {
+  const presence = tgPresence(courier?.tg_id);
+  if (requestId) {
+    orderTrace(requestId, "COURIER_RESOLVED", courier?.courier_id ? "ok" : "missing");
+    orderTrace(requestId, "COURIER_TG_ID_PRESENT", presence);
+  }
   const text = [
     `Новый заказ ${order.id}`,
     `Время: ${order.delivery_time || ""}`,
@@ -398,12 +420,13 @@ async function notifyCourier(order, courier = courierById(order.courier_id)) {
     ...orderItems(order.id).map((item) => `${item.name} ${item.variant} × ${item.quantity}`),
   ].join("\n");
   const notice = enqueueNotice({
-    recipient: courier?.tg_id || "",
+    recipient: presence === "present" ? String(courier.tg_id).trim() : "",
     text,
     orderId: order.id,
     kind: "courier",
   });
   await trySendNotice(notice, async (item) => {
+    if (requestId) orderTrace(requestId, "NOTIFICATION_ATTEMPTED", "ok");
     const token = String(process.env.TELEGRAM_BOT_TOKEN || "");
     const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: "POST",
@@ -411,8 +434,27 @@ async function notifyCourier(order, courier = courierById(order.courier_id)) {
       body: JSON.stringify({ chat_id: item.recipient, text: item.text }),
       signal: AbortSignal.timeout(8000),
     });
-    return response.ok;
+    let description = "";
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      description = String(data?.description || "");
+    }
+    const code = response.ok ? "" : telegramFailureCode(response.status, description);
+    notice.http_status = response.status;
+    if (requestId) {
+      orderTrace(requestId, "TELEGRAM_HTTP_STATUS", String(response.status));
+      orderTrace(requestId, "TELEGRAM_ERROR_CODE", response.ok ? "ok" : code);
+      orderTrace(requestId, "NOTIFICATION_SENT", response.ok ? "ok" : "fail");
+    }
+    return { ok: response.ok, code };
   });
+  if (requestId && !notice.sent && notice.last_error !== "TELEGRAM_REJECTED" && !notice.http_status) {
+    orderTrace(requestId, "NOTIFICATION_ATTEMPTED", "skipped");
+    orderTrace(requestId, "TELEGRAM_HTTP_STATUS", "skipped");
+    orderTrace(requestId, "TELEGRAM_ERROR_CODE", notice.last_error === "NO_RECIPIENT" && presence !== "present" ? (presence === "not_numeric" ? "COURIER_TELEGRAM_ID_NOT_NUMERIC" : "COURIER_TELEGRAM_ID_MISSING") : (notice.last_error || "NOT_SENT"));
+    orderTrace(requestId, "NOTIFICATION_SENT", "fail");
+  }
+  return notice;
 }
 
 function linesOf(orderId) {
@@ -561,8 +603,7 @@ function resumeStockMoves() {
 }
 
 async function recordCourierNotice(requestId, order, courier) {
-  if (requestId) orderTrace(requestId, "COURIER_NOTIFICATION_ATTEMPTED", "ok");
-  const notice = await notifyCourier(order, courier);
+  const notice = await notifyCourier(order, courier, requestId);
   if (requestId) orderTrace(requestId, "COURIER_NOTIFICATION_RESULT", noticeResultCode(notice));
   return notice;
 }
@@ -674,9 +715,45 @@ function refuseEphemeralOrders(req, res, next) {
   next();
 }
 
+function latestCheckoutFact() {
+  const orders = Object.values(db().orders || {}).filter((item) => item && item.id);
+  const latest = orders.sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")))[0];
+  if (!latest) return { orderId: "", orderStatus: "", courierId: "", orderNotice: "none", orderHttp: 0, orderCount: 0 };
+  const notice = (db().notices || []).find((item) => item.order_id === latest.id && String(item.id || "").startsWith("courier:"));
+  return {
+    orderId: String(latest.id).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 40),
+    orderStatus: String(latest.status || "").replace(/[^a-z_]/g, "").slice(0, 20),
+    courierId: String(latest.courier_id || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 32),
+    orderNotice: notice ? noticeResultCode(notice) : "none",
+    orderHttp: Number(notice?.http_status || 0),
+    orderCount: orders.length,
+  };
+}
+
+let courierTgCache = { at: 0, value: { "C-001": "unread", "C-002": "unread" } };
+
+async function courierTgPresence() {
+  if (Date.now() - courierTgCache.at < 60_000) return courierTgCache.value;
+  try {
+    const data = await readHamburgSources();
+    const value = {};
+    for (const id of ["C-001", "C-002"]) {
+      const row = (data.couriers || []).find((item) => item.courier_id === id);
+      value[id] = row ? tgPresence(row.tg_id) : "absent";
+    }
+    courierTgCache = { at: Date.now(), value };
+    return value;
+  } catch {
+    return courierTgCache.value;
+  }
+}
+
 app.get("/api/ready", async (_req, res) => {
   const telegram = process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_WEBHOOK_SECRET ? "configured" : "not configured";
   const probe = telegramProbeState();
+  const checkout = latestCheckoutFact();
+  const couriers = await courierTgPresence();
+  const testIds = String(process.env.TELEGRAM_TEST_IDS || "").split(",").map((item) => item.trim()).filter(Boolean);
   res.json({
     api: "ready",
     telegram,
@@ -687,6 +764,16 @@ app.get("/api/ready", async (_req, res) => {
     telegramLastError: probe.lastError,
     orderStage: lastOrderTrace.stage,
     orderCode: lastOrderTrace.code,
+    orderId: checkout.orderId,
+    orderStatus: checkout.orderStatus,
+    courierId: checkout.courierId,
+    orderNotice: checkout.orderNotice,
+    orderHttp: checkout.orderHttp,
+    orderCount: checkout.orderCount,
+    courierTgC001: couriers["C-001"],
+    courierTgC002: couriers["C-002"],
+    testMode: process.env.TELEGRAM_TEST_MODE === "0" ? "off" : "on",
+    testIds: testIds.length ? "set" : "empty",
     sheets: await sheetsReady(),
     database: storageMode(),
     stateSchema: Number(db().schemaVersion || 0),

@@ -55,7 +55,9 @@ export async function trySendNotice(notice, send) {
   }
   notice.attempts += 1;
   try {
-    const ok = await send(notice);
+    const result = await send(notice);
+    const ok = result === true || result?.ok === true;
+    const code = /^[A-Z0-9_]{1,40}$/.test(String(result?.code || "")) ? String(result.code) : "";
     if (ok) {
       notice.status = "sent";
       notice.sent = true;
@@ -63,7 +65,7 @@ export async function trySendNotice(notice, send) {
     } else {
       notice.status = "queued";
       notice.sent = false;
-      notice.last_error = "TELEGRAM_REJECTED";
+      notice.last_error = code || "TELEGRAM_REJECTED";
     }
   } catch (error) {
     notice.status = "queued";

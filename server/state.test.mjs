@@ -434,6 +434,15 @@ async function runIntegration() {
     const note = placed.payload.state.notices.find((item) => item.order_id === created.data.orderId);
     assert(placedOrder.courier_id === "courier-north", "courier assigned");
     assert(note && note.sent === false && note.status === "blocked" && note.last_error === "TEST_RECIPIENT_BLOCKED", "notice blocked before Telegram");
+    const confirmedAgain = await call(port, "/api/order/confirm", {
+      method: "POST",
+      token: customer.data.token,
+      body: { ...confirmBody, orderId: created.data.orderId },
+    });
+    const retried = await mainShape(client);
+    assert(confirmedAgain.status === 200 && confirmedAgain.data.telegram === false, "confirm retry stays on the same order");
+    assert(Object.keys(retried.payload.state.orders).length === Object.keys(placed.payload.state.orders).length, "retry did not create another order");
+    assert(retried.payload.state.notices.filter((item) => item.order_id === created.data.orderId).length === 1, "one courier notice");
     record("notice", true, `status=${note.status} sent=${note.sent}`);
     const courierLogin = await login(port, { id: 100000001, first_name: "Север", username: "courier_north" });
     assert(courierLogin.status === 200 && courierLogin.data.user.status === "courier", "courier session");

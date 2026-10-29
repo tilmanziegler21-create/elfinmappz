@@ -204,7 +204,17 @@ await trySendNotice(notice, async () => {
   return true;
 });
 record("notice-blocked", notice.sent === false && notice.status === "blocked" && blockedCalls === 0, notice.status);
+const missing = enqueueNotice({ recipient: "", text: "Новый заказ ORD-10", orderId: "ORD-10", kind: "courier" });
+let missingCalls = 0;
+await trySendNotice(missing, async () => {
+  missingCalls += 1;
+  return true;
+});
+record("notice-missing", missing.sent === false && missing.last_error === "NO_RECIPIENT" && missingCalls === 0, missing.last_error);
 process.env.TELEGRAM_TEST_IDS = "42";
+const unnamed = enqueueNotice({ recipient: "42", text: "Новый заказ ORD-11", orderId: "ORD-11", kind: "courier" });
+await trySendNotice(unnamed, async () => ({ ok: false, code: "CHAT_NOT_STARTED" }));
+record("notice-chat", unnamed.sent === false && unnamed.last_error === "CHAT_NOT_STARTED" && unnamed.status === "queued", unnamed.last_error);
 let attempts = 0;
 await trySendNotice(notice, async () => {
   attempts += 1;
