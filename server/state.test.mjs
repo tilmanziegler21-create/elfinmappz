@@ -480,7 +480,7 @@ async function runIntegration() {
       body: { city: "HH", orderId: deliveredOrder.data.orderId, status: "delivered" },
     });
     assert(deliveredConfirm.status === 200 && delivered.status === 200 && delivered.data.status === "delivered", "delivered once");
-    assert(deliveredAgain.status === 400, "delivered twice refused");
+    assert(deliveredAgain.status === 400 && deliveredAgain.data.error === "Заказ уже завершён", "delivered twice refused");
     record("J", true, "delivered twice");
     record("order-flow", true, "create confirm courier");
     await stopServer(child);

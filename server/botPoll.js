@@ -97,8 +97,87 @@ async function show(token, action) {
   await sendText(token, "sendMessage", payload, screen.rows || []);
 }
 
+const telegramProbe = {
+  getMe: "pending",
+  webhook: "pending",
+  pendingUpdates: null,
+  lastError: "",
+};
+
+function publicError(error) {
+  const status = Number(error?.status || 0);
+  if (status === 401) return "FAILED 401";
+  if (status) return `FAILED ${status}`;
+  return "FAILED";
+}
+
+function cleanTelegramText(value) {
+  return String(value || "").replace(/bot\d+:[A-Za-z0-9_-]+/g, "bot").slice(0, 120);
+}
+
+function expectedWebhook() {
+  const base = String(process.env.MINIAPP_PUBLIC_URL || process.env.PUBLIC_API_URL || "").trim().replace(/\/$/, "");
+  if (!base.startsWith("https://")) return "";
+  return `${base}/api/telegram/webhook`;
+}
+
+export function telegramProbeState() {
+  if (!String(process.env.TELEGRAM_BOT_TOKEN || "").trim()) {
+    return { getMe: "unconfigured", webhook: "unconfigured", pendingUpdates: null, lastError: "" };
+  }
+  return { ...telegramProbe };
+}
+
+async function readWebhook(token) {
+  const info = await call(token, "getWebhookInfo", {});
+  const result = info.result || {};
+  const url = String(result.url || "");
+  const expected = expectedWebhook();
+  telegramProbe.webhook = !url ? "missing" : url === expected ? "set" : "mismatch";
+  telegramProbe.pendingUpdates = Number(result.pending_update_count || 0);
+  telegramProbe.lastError = cleanTelegramText(result.last_error_message);
+  const last = telegramProbe.lastError ? ` last_error=${telegramProbe.lastError}` : "";
+  console.log(`Telegram webhook: ${telegramProbe.webhook} pending=${telegramProbe.pendingUpdates}${last}`);
+}
+
+export async function probeTelegram(token) {
+  try {
+    await call(token, "getMe", {});
+    telegramProbe.getMe = "PASS";
+    console.log("Telegram getMe: PASS");
+  } catch (error) {
+    telegramProbe.getMe = publicError(error);
+    telegramProbe.webhook = "skipped";
+    console.error(`Telegram getMe: ${telegramProbe.getMe}`);
+    return;
+  }
+  const expected = expectedWebhook();
+  const secret = String(process.env.TELEGRAM_WEBHOOK_SECRET || "").trim();
+  try {
+    await readWebhook(token);
+    if (process.env.NODE_ENV === "production" && expected && secret && telegramProbe.webhook !== "set") {
+      await call(token, "setWebhook", {
+        url: expected,
+        secret_token: secret,
+        allowed_updates: ["message", "callback_query"],
+        drop_pending_updates: false,
+      });
+      console.log("Telegram webhook: registered");
+      await readWebhook(token);
+    }
+  } catch (error) {
+    telegramProbe.webhook = "error";
+    console.error(`Telegram webhook: ${publicError(error)}`);
+  }
+}
+
 export async function configureBot(token) {
-  await call(token, "getMe");
+  await probeTelegram(token);
+  if (telegramProbe.getMe !== "PASS") {
+    const error = new Error("TELEGRAM_ERROR");
+    error.code = "TELEGRAM_ERROR";
+    throw error;
+  }
   await call(token, "setMyCommands", { commands });
   const button = menuButton(process.env.MINIAPP_PUBLIC_URL);
   if (button) await call(token, "setChatMenuButton", { menu_button: button });

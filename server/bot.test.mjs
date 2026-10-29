@@ -168,7 +168,7 @@ const otherCard = await handleUpdate({ callback_query: { id: "cb6", data: "c:od:
 record("courier-own", card.edit.text.includes("ORD-1") && card.edit.text.includes("Ледяная 4") && otherCard.edit.text.includes("не найден"), otherCard.edit.text);
 const go = await handleUpdate({ callback_query: { id: "cb7", data: "c:go:ORD-1", from: { id: "100000001", language_code: "ru" }, message: { message_id: 9, chat: { id: "100000001" } } } }, ctx());
 const goAgain = await handleUpdate({ callback_query: { id: "cb8", data: "c:go:ORD-1", from: { id: "100000001", language_code: "ru" }, message: { message_id: 9, chat: { id: "100000001" } } } }, ctx());
-record("deliver-once", go.edit.text.includes("выданным") && goAgain.edit.text.includes("закрыт") && delivers === 1, `calls ${delivers}`);
+record("deliver-once", go.edit.text.includes("выданным") && goAgain.edit.text.includes("завершён") && delivers === 1, `calls ${delivers}`);
 
 const why = await handleUpdate({ callback_query: { id: "cb9", data: "c:why:ORD-2", from: { id: "100000001", language_code: "ru" }, message: { message_id: 10, chat: { id: "77" } } } }, ctx());
 const reason = await handleUpdate({ message: { message_id: 11, chat: { id: "77" }, from: { id: "100000001", language_code: "ru" }, text: "не вышел" } }, ctx());

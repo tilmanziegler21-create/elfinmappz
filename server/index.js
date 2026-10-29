@@ -29,7 +29,7 @@ import { withMedia } from "./productMedia.js";
 import { enqueueNotice, trySendNotice } from "./notices.js";
 import { httpsUrl, onceUpdate } from "./bot.js";
 import { language } from "./botCopy.js";
-import { configureBot, dispatchUpdate, runPolling } from "./botPoll.js";
+import { configureBot, dispatchUpdate, runPolling, telegramProbeState } from "./botPoll.js";
 import { courierSlots } from "./slots.js";
 
 const PORT = Number(process.env.PORT || 8787);
@@ -602,9 +602,14 @@ function refuseEphemeralOrders(req, res, next) {
 
 app.get("/api/ready", async (_req, res) => {
   const telegram = process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_WEBHOOK_SECRET ? "configured" : "not configured";
+  const probe = telegramProbeState();
   res.json({
     api: "ready",
     telegram,
+    telegramGetMe: probe.getMe,
+    telegramWebhook: probe.webhook,
+    telegramPending: probe.pendingUpdates,
+    telegramLastError: probe.lastError,
     sheets: await sheetsReady(),
     database: storageMode(),
     stateSchema: Number(db().schemaVersion || 0),
@@ -1015,7 +1020,7 @@ async function applyCourierStatus(user, orderId, next, reason) {
   return withOrderLock(order.id, () => {
     const current = normalizeStatus(order.status);
     if (!["pending", "assigned", "picked_up"].includes(current)) {
-      const error = new Error("Invalid status");
+      const error = new Error(current === "delivered" ? "Заказ уже завершён" : "Invalid status");
       error.status = 400;
       throw error;
     }
