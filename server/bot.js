@@ -159,7 +159,7 @@ async function orderDetail(user, ctx, orderId) {
     euro(order.final_amount ?? order.total_amount),
     when(order.created_at),
     order.delivery_method || "—",
-    [order.delivery_date, order.delivery_time, order.delivery_address].filter(Boolean).join(" · ") || "—",
+    [order.delivery_date, order.delivery_time].filter(Boolean).join(" · ") || "—",
     "",
     ...items.map((item) => `${item.name} × ${item.quantity}`),
   ];
@@ -252,7 +252,7 @@ function panelText(orders, today) {
     if (!group.list.length) lines.push("Открытых заказов нет.");
     for (const order of group.list) {
       const id = safeId(order.id) || "—";
-      lines.push("", `• ${esc(id)} · ${esc(order.user_name || "Клиент")} · ${esc(order.delivery_time || "—")} · ${euro(orderAmount(order))}`);
+      lines.push("", `• ${esc(id)} · ${esc(order.delivery_time || "—")} · ${euro(orderAmount(order))}`);
       const products = (order.lines || []).slice(0, 4).map(lineText);
       if (products.length) lines.push(products.join(", "));
     }
@@ -275,7 +275,7 @@ function panelRows(orders, today, page) {
     const id = safeId(order.id);
     if (!id) continue;
     const whenWord = order.delivery_date === today.iso ? "сегодня" : order.delivery_date === tomorrow ? "завтра" : esc(order.delivery_date || "день");
-    const label = `📦 ${id} · ${String(order.user_name || "Клиент").slice(0, 18)} · ${order.delivery_time || "—"} · ${whenWord}`;
+    const label = `📦 ${id} · ${order.delivery_time || "—"} · ${whenWord}`;
     rows.push([{ text: label.slice(0, 64), callback_data: `c:od:${id}` }]);
   }
   const nav = [];
@@ -310,12 +310,10 @@ async function courierCard(user, ctx, orderId, note = "") {
   const lines = [
     `📦 <b>Заказ ${esc(order.id)}</b>`,
     "",
-    `👤 ${esc(order.user_name || "Клиент")}`,
     `📅 ${esc(order.delivery_date || "—")}`,
     `⏰ ${esc(order.delivery_time || "—")}`,
     `📌 ${esc(statusName("ru", order.status))}`,
     `💳 ${order.payment_method === "card" ? "Карта" : "Наличные"}`,
-    `📍 ${esc(order.delivery_address || "—")}`,
     "",
     ...(order.lines || []).map((item) => `• ${lineText(item)}`),
     "",
@@ -333,8 +331,9 @@ async function courierCard(user, ctx, orderId, note = "") {
     rows.push([{ text: "✏️ Своя сумма", callback_data: `c:own:${id}` }]);
     rows.push([{ text: "❌ Не выдано", callback_data: `c:why:${id}` }]);
   }
-  if (/^[A-Za-z0-9_]{5,32}$/.test(String(order.username || ""))) {
-    rows.push([{ text: "💬 Написать клиенту", url: `https://t.me/${order.username}` }]);
+  const clientName = String(order.username || "").replace(/^@/, "");
+  if (/^[A-Za-z0-9_]{5,32}$/.test(clientName) && /[A-Za-z_]/.test(clientName)) {
+    rows.push([{ text: "💬 Написать клиенту", url: `https://t.me/${clientName}` }]);
   }
   rows.push([{ text: "⬅️ Назад в панель", callback_data: "c:home" }]);
   return { ...view(lines.join("\n"), rows), html: true };
@@ -429,6 +428,13 @@ function commandOf(text) {
   return "";
 }
 
+function startArg(text) {
+  const parts = String(text || "").trim().split(/\s+/);
+  const word = (parts[0] || "").split("@")[0].toLowerCase();
+  if (word !== "/start") return "";
+  return parts.slice(1).join("").slice(0, 64);
+}
+
 export async function handleUpdate(update, ctx) {
   const callback = update.callback_query;
   if (callback) {
@@ -467,6 +473,18 @@ export async function handleUpdate(update, ctx) {
   if (command) state.pending = null;
   let screen;
   if (command === "/start" && user.status !== "courier") {
+    const payload = startArg(message.text);
+    const linked = payload.startsWith("ord_") ? safeId(payload.slice(4)) : "";
+    if (linked) {
+      const order = typeof ctx.orderFor === "function" ? await ctx.orderFor(user.tg_id, linked) : null;
+      if (!order) {
+        screen = view("Этот заказ вам недоступен.", [[{ text: t(user.lang, "back"), callback_data: "m:home" }]]);
+      } else {
+        state.pending = { type: "courier-note", orderId: order.id };
+        screen = view(`Напишите одно сообщение курьеру по заказу ${esc(order.id)}.`, []);
+      }
+      return { send: { chatId, ...screen, html: true } };
+    }
     const url = httpsUrl(ctx.miniAppUrl);
     return {
       photo: {
@@ -485,7 +503,17 @@ export async function handleUpdate(update, ctx) {
   else if (command === "/profile") screen = await profileView(user, ctx);
   else if (command === "/help") screen = view(`${t(user.lang, "help")}\n\n${t(user.lang, "infoBody")}`, [[{ text: t(user.lang, "support"), callback_data: "m:support" }], [{ text: t(user.lang, "back"), callback_data: "m:home" }]]);
   else if (command === "/admin") screen = adminHome(user);
-  else if (state.pending?.type === "support") {
+  else if (state.pending?.type === "courier-note") {
+    const text = String(message.text || "").trim();
+    const orderId = state.pending.orderId;
+    if (!text || text.length > 500) screen = view(`Напишите одно сообщение курьеру по заказу ${esc(orderId)}.`, []);
+    else if (typeof ctx.relayToCourier !== "function") screen = view("Сейчас написать курьеру нельзя.", []);
+    else {
+      const result = await ctx.relayToCourier(user, orderId, text);
+      state.pending = null;
+      screen = view(result?.ok ? "Сообщение передано курьеру." : "Сообщение пока не доставлено. Заказ сохранён.", []);
+    }
+  } else if (state.pending?.type === "support") {
     const text = String(message.text || "").trim();
     if (!text || text.length > 1000) screen = view(t(user.lang, "supportAsk"), [[{ text: t(user.lang, "back"), callback_data: "m:home" }]]);
     else {

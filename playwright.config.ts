@@ -1,6 +1,6 @@
 import { defineConfig } from "@playwright/test";
 
-const api = `DATA_DIR=/tmp/elfin-ui-pw-${Date.now()} DEMO_CATALOG=1 JWT_SECRET=elfin-qa-ui TELEGRAM_BOT_TOKEN=elfin-qa-ui-bot PORT=8787 node server/index.js`;
+const api = `DATA_DIR=/tmp/elfin-ui-pw-${Date.now()} DEMO_CATALOG=1 JWT_SECRET=elfin-qa-ui TELEGRAM_BOT_TOKEN=elfin-qa-ui-bot TELEGRAM_BOT_USERNAME=elfinappbot PORT=8787 node server/index.js`;
 
 export default defineConfig({
   testDir: "tests/ui",

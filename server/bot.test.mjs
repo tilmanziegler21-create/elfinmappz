@@ -179,6 +179,21 @@ const ask = await handleUpdate({ callback_query: { id: "cb3", data: "m:sup:ORD-1
 const saved = await handleUpdate({ message: { message_id: 7, chat: { id: 111 }, from: { id: "111", language_code: "ru" }, text: "Где заказ?" } }, ctx());
 record("support-save", ask.edit.text.includes("одним сообщением") && saved.send.text.includes("SUP-1") && tickets[0].order_id === "ORD-1" && tickets[0].text === "Где заказ?", saved.send.text);
 
+const relays = [];
+const relayCtx = () => ({
+  ...ctx(),
+  async relayToCourier(user, orderId, text) {
+    const order = orders.find((item) => item.id === orderId && item.user_id === String(user.tg_id));
+    if (!order) return { ok: false };
+    relays.push({ orderId, text });
+    return { ok: true };
+  },
+});
+const askCourier = await handleUpdate({ message: { message_id: 31, chat: { id: 111 }, from: { id: "111", language_code: "ru" }, text: "/start ord_ORD-1" } }, relayCtx());
+const sentNote = await handleUpdate({ message: { message_id: 32, chat: { id: 111 }, from: { id: "111", language_code: "ru" }, text: "Где встреча?" } }, relayCtx());
+const foreignNote = await handleUpdate({ message: { message_id: 33, chat: { id: 111 }, from: { id: "111", language_code: "ru" }, text: "/start ord_ORD-2" } }, relayCtx());
+record("write-courier", askCourier.send?.text?.includes("ORD-1") && !askCourier.photo && sentNote.send.text.includes("передано") && relays.length === 1 && relays[0].orderId === "ORD-1" && foreignNote.send.text.includes("недоступен") && relays.length === 1, askCourier.send?.text || "");
+
 const stranger = await handleUpdate({ callback_query: { id: "cb4", data: "c:od:ORD-1", from: { id: "111", language_code: "ru" }, message: { message_id: 8, chat: { id: 111 } } } }, ctx());
 record("not-courier", stranger.edit.text.includes("курьеров") && stranger.edit.rows.length === 0 && !stranger.edit.text.includes("Ледяная"), stranger.edit.text);
 
@@ -186,7 +201,7 @@ const courier = await handleUpdate(start("100000001", "100000001"), ctx());
 record("courier-home", courier.send.text.includes("Панель курьера"), courier.send.text);
 const card = await handleUpdate({ callback_query: { id: "cb5", data: "c:od:ORD-1", from: { id: "100000001", language_code: "ru" }, message: { message_id: 9, chat: { id: "100000001" } } } }, ctx());
 const otherCard = await handleUpdate({ callback_query: { id: "cb6", data: "c:od:ORD-2", from: { id: "100000001", language_code: "ru" }, message: { message_id: 9, chat: { id: "100000001" } } } }, ctx());
-record("courier-own", card.edit.text.includes("ORD-1") && card.edit.text.includes("Ледяная 4") && card.edit.rows.some((row) => row.some((button) => button.text.includes("Ровная сумма"))) && !card.edit.rows.some((row) => row.some((button) => button.web_app)) && otherCard.edit.text.includes("курьеров") && !otherCard.edit.text.includes("Ледяная") && otherCard.edit.rows.length === 0, card.edit.text.slice(0, 120));
+record("courier-own", card.edit.text.includes("ORD-1") && card.edit.text.includes("17:30") && card.edit.text.includes("Наличные") && !card.edit.text.includes("Ледяная") && !card.edit.text.includes("Клиент") && card.edit.rows.some((row) => row.some((button) => button.text.includes("Ровная сумма"))) && !card.edit.rows.some((row) => row.some((button) => button.web_app)) && otherCard.edit.text.includes("курьеров") && !otherCard.edit.text.includes("Ледяная") && otherCard.edit.rows.length === 0, card.edit.text.slice(0, 160));
 const panel = courier.send;
 const todayButton = panel.rows.find((row) => row[0]?.callback_data === "c:od:ORD-1");
 const nextPage = panel.rows.find((row) => row.some((button) => button.callback_data === "c:pg:1"));
@@ -254,6 +269,15 @@ await trySendNotice(notice, async () => {
   return true;
 });
 record("notice-blocked", notice.sent === false && notice.status === "blocked" && blockedCalls === 0, notice.status);
+process.env.TELEGRAM_TEST_MODE = "false";
+const liveNotice = enqueueNotice({ recipient: "99", text: "Новый заказ ORD-12", orderId: "ORD-12", kind: "courier" });
+let liveCalls = 0;
+await trySendNotice(liveNotice, async () => {
+  liveCalls += 1;
+  return true;
+});
+record("notice-open", liveNotice.sent === true && liveCalls === 1, liveNotice.status);
+process.env.TELEGRAM_TEST_MODE = "1";
 const missing = enqueueNotice({ recipient: "", text: "Новый заказ ORD-10", orderId: "ORD-10", kind: "courier" });
 let missingCalls = 0;
 await trySendNotice(missing, async () => {

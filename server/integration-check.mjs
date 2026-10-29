@@ -26,7 +26,7 @@ const report = {
   testSpreadsheet: Boolean(process.env.SHEETS_TEST_SPREADSHEET_ID),
   miniAppHttps: String(process.env.MINIAPP_PUBLIC_URL || "").startsWith("https://"),
   polling: process.env.TELEGRAM_POLLING === "1",
-  testMode: process.env.TELEGRAM_TEST_MODE !== "0",
+  testMode: !["0", "false", "off", "no"].includes(String(process.env.TELEGRAM_TEST_MODE ?? "").trim().toLowerCase()),
   liveWrites: process.env.ENABLE_LIVE_WRITES === "true" || process.env.SHEETS_READ_ONLY === "0",
   botConfigured: Boolean(process.env.TELEGRAM_BOT_TOKEN),
   tabs: null,

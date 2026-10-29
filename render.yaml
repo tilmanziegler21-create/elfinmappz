@@ -26,7 +26,7 @@ services:
       - key: ENABLE_LIVE_ORDERS
         value: "false"
       - key: TELEGRAM_TEST_MODE
-        value: "true"
+        value: "false"
       - key: TELEGRAM_POLLING
         value: "0"
       - key: GOOGLE_SERVICE_ACCOUNT_EMAIL

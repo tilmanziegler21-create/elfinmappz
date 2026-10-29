@@ -1,7 +1,8 @@
 import { db, persist } from "./store.js";
 
-function testMode() {
-  return process.env.TELEGRAM_TEST_MODE !== "0";
+export function telegramTestMode() {
+  const value = String(process.env.TELEGRAM_TEST_MODE ?? "").trim().toLowerCase();
+  return value !== "0" && value !== "false" && value !== "off" && value !== "no";
 }
 
 function allowed(recipient) {
@@ -16,6 +17,7 @@ export function enqueueNotice({ recipient, text, orderId, kind }) {
     id,
     notification_id: id,
     order_id: orderId || "",
+    kind: String(kind || ""),
     recipient: String(recipient || ""),
     tgId: String(recipient || ""),
     text,
@@ -46,7 +48,7 @@ export async function trySendNotice(notice, send) {
     persist();
     return notice;
   }
-  if (testMode() && !allowed(notice.recipient)) {
+  if (telegramTestMode() && !allowed(notice.recipient)) {
     notice.last_error = "TEST_RECIPIENT_BLOCKED";
     notice.status = "blocked";
     notice.sent = false;

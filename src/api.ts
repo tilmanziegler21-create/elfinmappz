@@ -36,6 +36,7 @@ export type ApiOrder = {
   place: string;
   comment: string;
   courierId: string;
+  writeCourier?: { url?: string; start?: string };
   lines: { name: string; variant: string; qty: number }[];
   units: number;
   customerName?: string;

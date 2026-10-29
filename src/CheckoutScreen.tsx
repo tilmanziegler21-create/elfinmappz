@@ -3,6 +3,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { CrystalIllustration } from "./CrystalIllustration";
 import { EmptyState } from "./EmptyState";
 import { api, todayDate, type ApiCourier, type AuthPhase, type SessionUser } from "./api";
+import { courierChatLink } from "./telegram";
 import { cartEntries, cartMoney, euro } from "./products";
 import { tapSpring } from "./motion";
 
@@ -18,6 +19,7 @@ export function CheckoutScreen({
   couriers,
   onClearCart,
   onCatalog,
+  onHome,
   onOrders,
   onClose,
   authFailed = false,
@@ -33,6 +35,7 @@ export function CheckoutScreen({
   couriers: ApiCourier[];
   onClearCart: () => void;
   onCatalog: () => void;
+  onHome?: () => void;
   onOrders: () => void;
   onClose?: () => void;
   authFailed?: boolean;
@@ -45,24 +48,23 @@ export function CheckoutScreen({
   const confirmed = useRef(false);
   const [fulfillment, setFulfillment] = useState<"delivery" | "pickup">("delivery");
   const [courierId, setCourierId] = useState("");
-  const [customerName, setCustomerName] = useState(user.firstName || "");
-  const [contact, setContact] = useState(user.username ? `@${user.username}` : "");
   const courier = couriers.find((item) => item.courier_id === courierId) ?? null;
   const slots = courier?.slots ?? [];
   const [time, setTime] = useState(slots[0] ?? "");
-  const [place, setPlace] = useState("");
-  const [comment, setComment] = useState("");
   const [payment, setPayment] = useState("cash");
   const [error, setError] = useState<string | null>(null);
   const [phase, setPhase] = useState<"form" | "loading" | "done">("form");
   const [orderId, setOrderId] = useState<string | null>(null);
+  const [doneTotal, setDoneTotal] = useState(total);
+  const [noticePending, setNoticePending] = useState(false);
+  const [writeCourier, setWriteCourier] = useState<{ url?: string; start?: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const signedOut = !verified && (!token || authPhase === "expired" || authPhase === "error" || authFailed);
 
   function chooseCourier(id: string) {
     const next = couriers.find((item) => item.courier_id === id);
     setCourierId(id);
     setTime(next?.slots[0] ?? "");
-    if (fulfillment === "pickup" && next?.meeting_place) setPlace(next.meeting_place);
   }
 
   function reportCheckout(code: string) {
@@ -98,12 +100,6 @@ export function CheckoutScreen({
       setError("Выберите время.");
       return;
     }
-    const meeting = fulfillment === "pickup" ? (courier.meeting_place || "Самовывоз") : place.trim();
-    if (fulfillment === "delivery" && meeting.length < 2) {
-      reportCheckout("NO_ADDRESS");
-      setError("Укажите адрес.");
-      return;
-    }
     setError(null);
     setBusy(true);
     setPhase("loading");
@@ -126,7 +122,7 @@ export function CheckoutScreen({
         createdId.current = created.orderId;
       }
       if (!confirmed.current) {
-        const confirmedBody = await api<{ telegram?: boolean }>("/api/order/confirm", {
+        const confirmedBody = await api<{ telegram?: boolean; writeCourier?: { url?: string; start?: string } }>("/api/order/confirm", {
           method: "POST",
           token,
           headers: { "x-request-id": idempotencyKey.current },
@@ -139,39 +135,37 @@ export function CheckoutScreen({
             delivery_time: time,
             promoCode: "",
             courierData: {
-              address: meeting,
-              comment,
+              address: "",
+              comment: "",
               user: {
                 tgId: user.tgId,
                 username: user.username,
-                name: (verified ? [user.firstName, user.lastName].filter(Boolean).join(" ") : customerName.trim()),
-                contact: verified ? (user.username ? `@${user.username}` : user.tgId) : contact.trim(),
               },
             },
           },
         });
-        if (confirmedBody.telegram === false) {
-          setBusy(false);
-          setPhase("form");
-          setError("Telegram не принял заказ.");
-          return;
-        }
         confirmed.current = true;
+        setNoticePending(confirmedBody.telegram === false);
+        setWriteCourier(confirmedBody.writeCourier ?? null);
       }
-      await api("/api/order/payment", {
-        method: "POST",
-        token,
-        body: {
-          orderId: createdId.current,
-          city,
-          paymentMethod: payment,
-          bonusApplied: 0,
-        },
-      });
+      try {
+        await api("/api/order/payment", {
+          method: "POST",
+          token,
+          body: {
+            orderId: createdId.current,
+            city,
+            paymentMethod: payment,
+            bonusApplied: 0,
+          },
+        });
+      } catch {
+        /* The order is already stored. A later payment write must not look like a failed checkout. */
+      }
+      setDoneTotal(total);
       setOrderId(createdId.current);
-      onClearCart();
-      onOrders();
       setPhase("done");
+      onClearCart();
     } catch (reason) {
       setBusy(false);
       setPhase("form");
@@ -181,7 +175,33 @@ export function CheckoutScreen({
     }
   }
 
-  if (lines.length === 0 && phase !== "done") {
+  if (phase === "done" && orderId) {
+    const writeHref = courierChatLink(writeCourier, botUrl);
+    return (
+      <div className="empty-state">
+        <div className="empty-crystal">
+          <span className="empty-glow" />
+          <span className="empty-float">
+            <CrystalIllustration variant="orders" />
+          </span>
+        </div>
+        <h2 className="empty-title">Заказ успешно оформлен!</h2>
+        <p className="empty-text">Заказ: {orderId}</p>
+        <p className="empty-text">Статус: Ожидает подтверждения</p>
+        <p className="empty-text">Курьер: {courier?.name || "Назначенный курьер"}</p>
+        <p className="empty-text">Время: {time}</p>
+        <p className="empty-text">Сумма: {euro(doneTotal)}</p>
+        {noticePending ? <p className="checkout-note">Сообщение курьеру ещё не доставлено. Заказ сохранён.</p> : null}
+        <div className="empty-actions">
+          {writeHref ? <a className="btn btn-primary empty-cta" href={writeHref} target="_blank" rel="noreferrer">💬 Написать курьеру</a> : null}
+          <button type="button" className="btn btn-ghost empty-cta" onClick={onOrders}>📦 Мои заказы</button>
+          <button type="button" className="btn btn-ghost empty-cta" onClick={onHome || onCatalog}>🏠 На главную</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (lines.length === 0) {
     return (
       <EmptyState
         variant="cart"
@@ -207,24 +227,6 @@ export function CheckoutScreen({
     );
   }
 
-  if (phase === "done" && orderId) {
-    return (
-      <div className="empty-state">
-        <div className="empty-crystal">
-          <span className="empty-glow" />
-          <span className="empty-float">
-            <CrystalIllustration variant="orders" />
-          </span>
-        </div>
-        <h2 className="empty-title">Заказ #{orderId}</h2>
-        <p className="empty-text">Курьер получил сообщение в Telegram.</p>
-        <div className="empty-actions">
-          <button type="button" className="btn btn-primary empty-cta" onClick={onOrders}>К заказам</button>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="checkout-page order-sheet">
       {onClose ? (
@@ -236,14 +238,19 @@ export function CheckoutScreen({
       <div className="checkout-scroll">
         <div className="order-seg" role="group" aria-label="Способ получения">
           <button type="button" className={fulfillment === "pickup" ? "is-on" : ""} onClick={() => { setFulfillment("pickup"); setError(null); }}>Самовывоз</button>
-          <button type="button" className={fulfillment === "delivery" ? "is-on" : ""} onClick={() => { setFulfillment("delivery"); setError(null); }}>Адрес</button>
+          <button type="button" className={fulfillment === "delivery" ? "is-on" : ""} onClick={() => { setFulfillment("delivery"); setError(null); }}>Доставка</button>
+        </div>
+        <div className="checkout-card">
+          {lines.map((line) => (
+            <div className="checkout-line" key={line.variant.id}>
+              <span>{line.product.brand} · {line.variant.label}</span>
+              <strong>{line.qty}</strong>
+            </div>
+          ))}
         </div>
         {authPhase === "initializing" ? <p className="cart-caption">Подтверждаем Telegram.</p> : null}
-        {verified ? (
+        {user.tgId && !signedOut ? (
           <div className="facts">
-            <div className="fact"><span>Ваш Telegram</span><strong>подключён</strong></div>
-            <div className="fact"><span>Имя</span><strong>{[user.firstName, user.lastName].filter(Boolean).join(" ") || "Имя не указано"}</strong></div>
-            <div className="fact"><span>Username</span><strong>{user.username ? `@${user.username}` : "Username не установлен"}</strong></div>
             <div className="fact"><span>Telegram ID</span><strong>{user.tgId}</strong></div>
           </div>
         ) : authPhase === "initializing" ? null : (
@@ -258,34 +265,12 @@ export function CheckoutScreen({
             ))}
           </select>
         </label>
-        {verified ? null : (
-          <>
-            <label className="order-field">
-              <span>Имя</span>
-              <input value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Имя" autoComplete="name" />
-            </label>
-            <label className="order-field">
-              <span>Telegram или телефон</span>
-              <input value={contact} onChange={(event) => setContact(event.target.value)} placeholder="@username или телефон" autoComplete="tel" />
-            </label>
-          </>
-        )}
         <label className="order-field">
           <span>Время</span>
           <select value={time} onChange={(event) => setTime(event.target.value)} disabled={!courier}>
             <option value="">{courier ? "Время" : "Сначала курьер"}</option>
             {slots.map((slot) => <option key={slot} value={slot}>{slot}</option>)}
           </select>
-        </label>
-        {fulfillment === "delivery" ? (
-          <label className="order-field">
-            <span>Адрес</span>
-            <input value={place} onChange={(event) => setPlace(event.target.value)} placeholder="Адрес" autoComplete="street-address" />
-          </label>
-        ) : null}
-        <label className="order-field">
-          <span>Комментарий</span>
-          <textarea value={comment} onChange={(event) => setComment(event.target.value)} maxLength={200} placeholder="Необязательно" />
         </label>
       </div>
       <div className="order-dock">
@@ -303,7 +288,7 @@ export function CheckoutScreen({
           <span>Товары</span>
           <strong>{euro(total)}</strong>
           <span>Получение</span>
-          <strong>{fulfillment === "pickup" ? "Самовывоз" : "Адрес"}</strong>
+          <strong>{fulfillment === "pickup" ? "Самовывоз" : "Доставка"}</strong>
           <span className="is-total">Итого</span>
           <strong className="is-total">{euro(total)}</strong>
         </div>

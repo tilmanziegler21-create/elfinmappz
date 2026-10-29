@@ -115,20 +115,18 @@ test("корзина удаляет позицию и возвращает её"
   await expect(page.getByRole("button", { name: "В каталог" })).toBeVisible();
 });
 
-test("самовывоз и адрес меняют поля и не стирают имя", async ({ page }) => {
+test("оформление без имени и адреса показывает Telegram ID", async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("elfin-cart", JSON.stringify({ "elfliq-watermelon:30": 1 })));
   await openShop(page);
   await page.getByRole("navigation", { name: "Разделы" }).getByRole("button", { name: "Корзина" }).click();
   await page.getByRole("button", { name: "К оформлению" }).click();
-  const name = page.getByRole("textbox", { name: "Имя" });
-  await name.fill("Тест");
-  await page.getByRole("button", { name: "Самовывоз" }).click();
+  await expect(page.getByRole("textbox", { name: "Имя" })).toHaveCount(0);
   await expect(page.getByRole("textbox", { name: "Адрес" })).toHaveCount(0);
-  await page.getByRole("button", { name: "Адрес" }).click();
-  await expect(page.getByRole("textbox", { name: "Адрес" })).toBeVisible();
+  await expect(page.getByText("Telegram ID")).toBeVisible();
+  await expect(page.getByText("123456789")).toBeVisible();
+  await page.getByRole("button", { name: "Доставка" }).click();
+  await expect(page.getByRole("textbox", { name: "Адрес" })).toHaveCount(0);
   await page.getByRole("button", { name: "Самовывоз" }).click();
-  await page.getByRole("button", { name: "Адрес" }).click();
-  await expect(name).toHaveValue("Тест");
   await page.getByRole("button", { name: "Подтвердить заказ" }).click();
   await expect(page.getByRole("alert")).toContainText("Выберите курьера.");
   await page.getByRole("button", { name: "Подтвердить заказ" }).click();
@@ -190,6 +188,7 @@ test("подробности заказа берутся из истории", a
   await more.click();
   await expect(page.getByText("Северный · 10 мл · 1").first()).toBeVisible();
   await expect(page.getByText("Курьер Север").first()).toBeVisible();
+  await expect(page.getByRole("link", { name: /Написать курьеру/ })).toHaveAttribute("href", "https://t.me/courier_north");
   await expect(page.getByText("Самовывоз", { exact: true }).first()).toBeVisible();
   await page.getByRole("button", { name: "Скрыть" }).click();
   await expect(page.getByText("Северный · 10 мл · 1")).toHaveCount(0);
@@ -384,9 +383,6 @@ test("отказ API оставляет корзину и показывает �
   await expect(page.locator(".sheet-layer.is-open")).toHaveCount(0);
   await page.getByRole("button", { name: "К оформлению" }).click();
   await page.getByRole("combobox", { name: "Курьер" }).selectOption({ index: 1 });
-  await page.getByRole("button", { name: "Подтвердить заказ" }).click();
-  await expect(page.getByRole("alert")).toContainText("Укажите адрес.");
-  await page.getByRole("button", { name: "Самовывоз" }).click();
   mode = "down";
   await page.getByRole("button", { name: "Подтвердить заказ" }).click();
   await expect(page.getByRole("alert")).toContainText("Оформление тестовых заказов пока недоступно.");
@@ -417,4 +413,35 @@ test("история показывает 401, 500 и повтор", async ({ pa
   mode = "ok";
   await page.getByRole("button", { name: "Повторить" }).click();
   await expect(page.getByText("Заказов пока нет")).toBeVisible();
+});
+
+test("сохранённый заказ остаётся успешным и даёт связь с курьером", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("elfin-cart", JSON.stringify({ "elfliq-watermelon:30": 1 })));
+  let creates = 0;
+  await page.route("**/api/order/create", async (route) => {
+    creates += 1;
+    await route.fulfill({ json: { orderId: "ORD-TEST1" } });
+  });
+  await page.route("**/api/order/confirm", async (route) => {
+    await route.fulfill({ json: { success: true, telegram: false, orderId: "ORD-TEST1", courierName: "Север", writeCourier: { url: "https://t.me/courier_north" } } });
+  });
+  await page.route("**/api/order/payment", async (route) => {
+    await route.fulfill({ json: { success: true } });
+  });
+  await openShop(page);
+  await page.getByRole("navigation", { name: "Разделы" }).getByRole("button", { name: "Корзина" }).click();
+  await page.getByRole("button", { name: "К оформлению" }).click();
+  await page.getByRole("combobox", { name: "Курьер" }).selectOption({ index: 1 });
+  await page.getByRole("button", { name: "Подтвердить заказ" }).click();
+  await expect(page.getByText("Заказ успешно оформлен!")).toBeVisible();
+  await expect(page.getByText("ORD-TEST1")).toBeVisible();
+  await expect(page.getByText("Telegram не принял заказ.")).toHaveCount(0);
+  await expect(page.getByText("Сообщение курьеру ещё не доставлено. Заказ сохранён.")).toBeVisible();
+  await expect(page.getByRole("link", { name: /Написать курьеру/ })).toHaveAttribute("href", "https://t.me/courier_north");
+  await expect(page.getByRole("button", { name: /Мои заказы/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /На главную/ })).toBeVisible();
+  expect(creates).toBe(1);
+  await page.getByRole("button", { name: /На главную/ }).click();
+  await expect(page.getByText("Всё в одном месте")).toBeVisible();
+  expect(creates).toBe(1);
 });

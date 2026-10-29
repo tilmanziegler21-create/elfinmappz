@@ -537,7 +537,7 @@ export function App() {
                 />
               ) : null}
               {view === "checkout" && !session ? <p className="empty-text">Нет сессии. Запустите API и откройте приложение снова.</p> : null}
-              {view === "orders" && session ? <OrdersScreen token={session.token} city={session.city} couriers={couriers} onCatalog={() => setScreen("catalog")} /> : null}
+              {view === "orders" && session ? <OrdersScreen token={session.token} city={session.city} couriers={couriers} botUrl={botUrl} onCatalog={() => setScreen("catalog")} /> : null}
               {view === "orders" && !session ? <p className="empty-text">{authPhase === "initializing" ? "Подтверждаем Telegram." : "История откроется после входа."}</p> : null}
               {view === "profile" ? (
                 <Profile
@@ -625,6 +625,7 @@ export function App() {
               couriers={couriers}
               onClearCart={() => setCart({})}
               onCatalog={() => { setCheckoutOpen(false); setScreen("catalog"); }}
+              onHome={() => { setCheckoutOpen(false); setScreen("home"); }}
               onOrders={() => { setCheckoutOpen(false); setScreen("orders"); }}
               onClose={() => setCheckoutOpen(false)}
               authFailed={Boolean(authError)}

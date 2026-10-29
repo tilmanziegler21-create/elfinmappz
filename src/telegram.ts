@@ -32,8 +32,16 @@ export function telegramWebApp(): TelegramWebApp | null {
 
 export function telegramBotLink(name: string | null | undefined) {
   const value = String(name || "").trim().replace(/^@/, "");
-  if (!/^[A-Za-z0-9_]{5,32}$/.test(value)) return null;
+  if (!/^[A-Za-z0-9_]{5,32}$/.test(value) || !/[A-Za-z_]/.test(value)) return null;
   return `https://t.me/${value}`;
+}
+
+export function courierChatLink(target: { url?: string; start?: string } | null | undefined, botUrl: string | null) {
+  const direct = String(target?.url || "");
+  if (/^https:\/\/t\.me\/(?!\d+$)[A-Za-z0-9_]{5,32}$/.test(direct)) return direct;
+  const start = String(target?.start || "");
+  if (!botUrl || !/^ord_[A-Za-z0-9_-]{1,40}$/.test(start)) return "";
+  return `${botUrl}?start=${encodeURIComponent(start)}`;
 }
 
 export function bindTelegramViewport() {

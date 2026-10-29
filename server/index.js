@@ -26,7 +26,7 @@ import {
 import { readHamburgSources } from "./hhRead.js";
 import { hhTabReport, listSheetTitles, loadServiceAccount, sheetCode, sheetTabs, spreadsheetMeta } from "./sheetsRead.js";
 import { withMedia } from "./productMedia.js";
-import { enqueueNotice, trySendNotice } from "./notices.js";
+import { enqueueNotice, telegramTestMode, trySendNotice } from "./notices.js";
 import { httpsUrl, onceUpdate } from "./bot.js";
 import { language } from "./botCopy.js";
 import { configureBot, dispatchUpdate, runPolling, telegramProbeState } from "./botPoll.js";
@@ -280,9 +280,24 @@ function verifyInitData(initData) {
   return user;
 }
 
+function publicUsername(value) {
+  const name = String(value || "").trim().replace(/^@/, "");
+  if (!/^[A-Za-z0-9_]{5,32}$/.test(name) || !/[A-Za-z_]/.test(name)) return "";
+  return name;
+}
+
 function botUsername() {
-  const name = String(process.env.TELEGRAM_BOT_USERNAME || "").trim().replace(/^@/, "");
-  return /^[A-Za-z0-9_]{5,32}$/.test(name) ? name : null;
+  return publicUsername(process.env.TELEGRAM_BOT_USERNAME) || publicUsername(telegramProbeState().username) || null;
+}
+
+function writeCourierFor(courier, orderId) {
+  const account = courier?.tg_id ? db().users[String(courier.tg_id)] : null;
+  const username = publicUsername(account?.username);
+  const id = String(orderId || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 40);
+  const target = {};
+  if (username) target.url = `https://t.me/${username}`;
+  if (id) target.start = `ord_${id}`;
+  return target;
 }
 
 function syncRole(user) {
@@ -375,6 +390,7 @@ function customerOrder(order) {
     place: order.delivery_address || "",
     comment: order.comment || "",
     courierId: order.courier_id || "",
+    writeCourier: writeCourierFor(courierById(order.courier_id), order.id),
     lines: orderItems(order.id).map((item) => ({
       name: item.name,
       variant: item.variant,
@@ -423,12 +439,13 @@ async function notifyCourier(order, courier = courierById(order.courier_id), req
   }
   const html = (value) => String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const lines = orderItems(order.id).map((item) => `• ${html(item.name)}${item.variant ? ` · ${html(item.variant)}` : ""} × ${html(item.quantity)}`);
+  const statusLabel = { pending: "Ожидает подтверждения", assigned: "Назначен", picked_up: "В пути", delivered: "Выдан", cancelled: "Отменён" }[normalizeStatus(order.status)] || "Ожидает подтверждения";
   const text = [
     `📦 <b>Заказ ${html(order.id)}</b>`,
-    `👤 ${html(order.user_name || "Клиент")}`,
     `📅 ${html(order.delivery_date || "—")}`,
     `⏰ ${html(order.delivery_time || "—")}`,
-    `📌 ${html(order.delivery_address || "—")}`,
+    `📌 ${html(statusLabel)}`,
+    `💳 ${order.payment_method === "card" ? "Карта" : "Наличные"}`,
     lines.join("\n"),
     `💰 По заказу: ${html(order.total_amount)} €`,
   ].filter(Boolean).join("\n");
@@ -624,6 +641,17 @@ async function recordCourierNotice(requestId, order, courier) {
   return notice;
 }
 
+function confirmPayload(order, courier) {
+  return {
+    success: true,
+    status: normalizeStatus(order.status),
+    telegram: Boolean(order.telegram_sent),
+    orderId: order.id,
+    courierName: courier?.name || "",
+    writeCourier: writeCourierFor(courier, order.id),
+  };
+}
+
 async function applyConfirm(order, next, data, courier, requestId) {
   if (order.delivery_locked) {
     if (!sameMeeting(order, next)) return { status: 409, payload: { error: "CONFIRM_CONFLICT" } };
@@ -632,7 +660,7 @@ async function applyConfirm(order, next, data, courier, requestId) {
       order.telegram_sent = Boolean(notice?.sent);
     }
     persist();
-    return { status: 200, payload: { success: true, status: normalizeStatus(order.status), telegram: Boolean(order.telegram_sent) } };
+    return { status: 200, payload: confirmPayload(order, courier) };
   }
   const current = normalizeStatus(order.status);
   if (current === "cancelled" || current === "delivered") return { status: 409, payload: { error: "CONFIRM_CONFLICT" } };
@@ -666,7 +694,7 @@ async function applyConfirm(order, next, data, courier, requestId) {
     const notice = await recordCourierNotice(requestId, order, courier);
     order.telegram_sent = Boolean(notice?.sent);
   }
-  return { status: 200, payload: { success: true, status: order.status, telegram: Boolean(order.telegram_sent) } };
+  return { status: 200, payload: confirmPayload(order, courier) };
 }
 
 app.get("/api/health", (_req, res) => {
@@ -788,7 +816,7 @@ app.get("/api/ready", async (_req, res) => {
     orderCount: checkout.orderCount,
     courierTgC001: couriers["C-001"],
     courierTgC002: couriers["C-002"],
-    testMode: process.env.TELEGRAM_TEST_MODE === "0" ? "off" : "on",
+    testMode: telegramTestMode() ? "on" : "off",
     testIds: testIds.length ? "set" : "empty",
     sheets: await sheetsReady(),
     database: storageMode(),
@@ -1098,12 +1126,16 @@ app.post("/api/order/confirm", beginOrderTrace, refuseEphemeralOrders, requireAu
     mark(req, "ORDER_VALIDATED", "NO_SLOT");
     return res.status(400).json({ error: "Выберите время" });
   }
-  const data = req.body?.courierData || {};
-  const place = method === "pickup" && courier.meeting_place ? courier.meeting_place : String(data.address || "").trim();
-  if (place.length < 2) {
-    mark(req, "ORDER_VALIDATED", "NO_ADDRESS");
-    return res.status(400).json({ error: method === "courier" ? "Укажите адрес" : "Укажите точку встречи" });
-  }
+  const data = {
+    ...(req.body?.courierData || {}),
+    user: {
+      tgId: req.user.tg_id,
+      username: req.user.username || "",
+      name: [req.user.first_name, req.user.last_name].filter(Boolean).join(" ").trim(),
+    },
+  };
+  const typed = String(data.address || "").trim();
+  const place = method === "pickup" && courier.meeting_place ? courier.meeting_place : typed;
   const next = {
     method,
     courier: courier.courier_id,
@@ -1463,6 +1495,23 @@ function botContext() {
       }
       return ticket;
     },
+    async relayToCourier(user, orderId, text) {
+      const order = db().orders[String(orderId || "")];
+      if (!order || order.user_id !== String(user?.tg_id || "")) return { ok: false };
+      if (!["pending", "assigned", "picked_up"].includes(normalizeStatus(order.status))) return { ok: false, closed: true };
+      const courier = await courierRecord(order.courier_id);
+      const body = String(text || "").trim().slice(0, 500);
+      if (!courier || !body) return { ok: false };
+      const html = (value) => String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      const notice = enqueueNotice({
+        recipient: /^\d+$/.test(String(courier.tg_id || "")) ? String(courier.tg_id) : "",
+        orderId: `${order.id}:${Date.now().toString(36)}`,
+        kind: "relay",
+        text: `Сообщение по заказу ${html(order.id)}\n${html(body)}`,
+      });
+      await trySendNotice(notice, sendStoredNotice);
+      return { ok: Boolean(notice.sent) };
+    },
     courierOrders(user, mode) {
       return this.courierBoard(user, mode);
     },
@@ -1660,8 +1709,55 @@ function startReservationCleanup() {
     } catch (error) {
       console.error(`Reservation cleanup error: reservations=${fieldKind("reservations")} ${error?.code || error?.message || "error"}`);
     }
+    scheduleNoticeRetry();
   }, 60 * 1000);
   reservationTimer.unref?.();
+}
+
+function courierRecord(courierId) {
+  const id = String(courierId || "");
+  if (!id) return null;
+  if (useLocalCatalog()) return workbook().couriers.find((item) => item.courier_id === id && item.active) || null;
+  return readHamburgSources()
+    .then((data) => (data.couriers || []).find((item) => item.courier_id === id && item.active) || workbook().couriers.find((item) => item.courier_id === id && item.active) || null)
+    .catch(() => workbook().couriers.find((item) => item.courier_id === id && item.active) || null);
+}
+
+async function sendStoredNotice(item) {
+  const token = String(process.env.TELEGRAM_BOT_TOKEN || "");
+  const kind = String(item.kind || String(item.id || "").split(":")[0]);
+  const orderKey = kind === "courier" && /^[A-Za-z0-9_-]{1,40}$/.test(String(item.order_id || "")) ? String(item.order_id) : "";
+  const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      chat_id: item.recipient,
+      text: item.text,
+      parse_mode: "HTML",
+      reply_markup: orderKey ? { inline_keyboard: [[{ text: "Открыть заказ", callback_data: `c:od:${orderKey}` }]] } : undefined,
+    }),
+    signal: AbortSignal.timeout(8000),
+  });
+  const data = await response.json().catch(() => ({}));
+  const description = response.ok ? "" : String(data?.description || "");
+  return { ok: response.ok, code: response.ok ? "" : telegramFailureCode(response.status, description), messageId: data?.result?.message_id };
+}
+
+let noticeRetry = null;
+
+async function retryOpenNotices() {
+  if (!process.env.TELEGRAM_BOT_TOKEN) return;
+  const pending = db().notices.filter((notice) => !notice.sent && notice.status !== "sent" && Number(notice.attempts || 0) < 5 && !(notice.status === "blocked" && telegramTestMode()));
+  for (const notice of pending) await trySendNotice(notice, sendStoredNotice);
+}
+
+function scheduleNoticeRetry() {
+  if (noticeRetry) return;
+  noticeRetry = retryOpenNotices().catch((error) => {
+    console.error("Notice retry:", error?.code || error?.message || "error");
+  }).finally(() => {
+    noticeRetry = null;
+  });
 }
 
 async function boot() {
@@ -1689,7 +1785,7 @@ async function boot() {
   const production = process.env.NODE_ENV === "production";
   const polling = process.env.TELEGRAM_POLLING === "1" && process.env.BOT_MODE !== "webhook" && !production;
   if (process.env.TELEGRAM_BOT_TOKEN) {
-    configureBot(process.env.TELEGRAM_BOT_TOKEN).catch((error) => {
+    configureBot(process.env.TELEGRAM_BOT_TOKEN).then(() => scheduleNoticeRetry()).catch((error) => {
       console.error("Bot setup:", error?.code || error?.message || "error");
     });
   }

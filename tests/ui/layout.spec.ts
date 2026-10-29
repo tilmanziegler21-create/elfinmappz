@@ -109,6 +109,15 @@ test("оформление и нижний бар не съезжают", async 
     { width: 430, height: 932 },
   ]) {
     await page.setViewportSize(size);
+    await nav.getByRole("button", { name: "Корзина" }).click();
+    await page.getByRole("button", { name: "К оформлению" }).click();
+    await expect(page.getByRole("dialog", { name: "Оформление заказа" })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "Имя" })).toHaveCount(0);
+    await expect(page.getByRole("textbox", { name: "Адрес" })).toHaveCount(0);
+    await expect(page.getByText("Telegram ID")).toBeVisible();
+    await expect(nav).toBeHidden();
+    await page.getByRole("button", { name: "Закрыть", exact: true }).click();
+    await expect(page.locator(".sheet-layer")).toBeHidden();
     await expect(nav).toBeVisible();
     const overflow = await page.evaluate(() => {
       const stage = document.querySelector(".stage");

@@ -46,9 +46,10 @@ test("проверенный Telegram заполняет оформление и
   await expect(page.getByText("@leya")).toBeVisible();
   await page.getByRole("navigation", { name: "Разделы" }).getByRole("button", { name: "Корзина" }).click();
   await page.getByRole("button", { name: "К оформлению" }).click();
-  await expect(page.getByText("подключён")).toBeVisible();
-  await expect(page.getByText("Лея Норд")).toBeVisible();
+  await expect(page.getByText("Telegram ID")).toBeVisible();
   await expect(page.getByText(id)).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Имя" })).toHaveCount(0);
+  await expect(page.getByRole("textbox", { name: "Адрес" })).toHaveCount(0);
   await page.getByRole("button", { name: "Закрыть", exact: true }).click();
   await page.getByRole("button", { name: "Заказы" }).click();
   await page.getByRole("navigation", { name: "Разделы" }).getByRole("button", { name: "Корзина" }).click();

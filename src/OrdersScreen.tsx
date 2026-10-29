@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, customerStatus, type ApiCourier, type ApiOrder } from "./api";
+import { courierChatLink } from "./telegram";
 import { EmptyState } from "./EmptyState";
 import { positionWord } from "./orders";
 import { euro } from "./products";
@@ -9,11 +10,13 @@ export function OrdersScreen({
   city,
   onCatalog,
   couriers = [],
+  botUrl = null,
 }: {
   token: string;
   city: string;
   onCatalog: () => void;
   couriers?: ApiCourier[];
+  botUrl?: string | null;
 }) {
   const [orders, setOrders] = useState<ApiOrder[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -96,6 +99,9 @@ export function OrdersScreen({
                 <p>{[order.date, order.time].filter(Boolean).join(" ") || "Время не выбрано"}</p>
                 {method ? <p>{method}</p> : null}
                 {order.courierId ? <p>Курьер {courier?.name || order.courierId}</p> : null}
+                {["pending", "assigned", "picked_up", "buffer"].includes(order.status) && courierChatLink(order.writeCourier, botUrl) ? (
+                  <a className="btn btn-ghost choice-btn" href={courierChatLink(order.writeCourier, botUrl)} target="_blank" rel="noreferrer">💬 Написать курьеру</a>
+                ) : null}
               </div>
             ) : null}
           </article>
