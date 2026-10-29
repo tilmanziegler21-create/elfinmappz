@@ -608,6 +608,7 @@ app.get("/api/ready", async (_req, res) => {
     sheets: await sheetsReady(),
     database: storageMode(),
     stateSchema: Number(db().schemaVersion || 0),
+    users: fieldKind("users"),
     reservations: fieldKind("reservations"),
     orders: fieldKind("orders"),
     orderIdempotency: fieldKind("orderIdempotency"),
@@ -1337,15 +1338,13 @@ if (process.env.NODE_ENV === "production" && fs.existsSync(path.join(distDir, "i
   });
 }
 
-async function boot() {
-  const mode = await hydrateStore();
-  console.log(`Storage: ${mode}`);
-  await reportSheets();
-  resumeStockMoves();
+function startReservationCleanup() {
   try {
     expireReservations();
+    console.log("Reservation cleanup: ok");
   } catch (error) {
     console.error(`Reservation cleanup error: reservations=${fieldKind("reservations")} ${error?.code || error?.message || "error"}`);
+    return;
   }
   reservationTimer = setInterval(() => {
     try {
@@ -1355,6 +1354,14 @@ async function boot() {
     }
   }, 60 * 1000);
   reservationTimer.unref?.();
+}
+
+async function boot() {
+  const mode = await hydrateStore();
+  console.log(`Storage: ${mode}`);
+  startReservationCleanup();
+  resumeStockMoves();
+  await reportSheets();
   const host = "0.0.0.0";
   const missing = missingEnv();
   if (missing.length) console.error(`Missing env: ${missing.join(", ")}`);

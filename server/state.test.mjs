@@ -351,15 +351,22 @@ async function runIntegration() {
     assert(ready.reservations === "array" && ready.orders === "object" && ready.orderIdempotency === "object", "ready field types");
     assert(ready.reservationCleanup === "ok", "cleanup did not throw");
     assert(!log.includes("not iterable") && !log.includes("Cannot read properties of undefined"), "boot has no order TypeError");
-    assert(log.includes("State migration:"), "migration logged");
+    assert(!log.includes("Reservation cleanup error"), "cleanup error is absent");
+    assert(log.includes("State migration:") && log.includes("Reservation cleanup: ok"), "migration and cleanup logged");
+    assert(log.indexOf("State schema before:") < log.indexOf("Reservation cleanup: ok"), "cleanup starts after load");
+    assert(ready.users === "object", "users kept as object");
     const saved = await mainShape(client);
     assert(Array.isArray(saved.payload.state.reservations), "stored reservations array");
     assert(saved.payload.state.orders["ORD-LEGACY"]?.status === "pending", "legacy order kept in postgres");
     assert(saved.payload.state.users["424242"]?.status === "user", "legacy user kept");
     assert(saved.payload.state.orderIdempotency && !Array.isArray(saved.payload.state.orderIdempotency), "idempotency map stored");
     assert(saved.payload.sheet.products[0].stock === 8, "catalog stock kept");
-    const backups = await client.query("SELECT payload FROM elfin_state WHERE id LIKE 'backup-%'");
+    const backups = await client.query("SELECT id, payload FROM elfin_state WHERE id LIKE 'backup-%'");
+    const mainBefore = await client.query("SELECT revision FROM elfin_state WHERE id = 'main'");
     assert(backups.rowCount === 1 && backups.rows[0].payload.state.reservations == null, "original snapshot backed up");
+    assert(backups.rows[0].payload.state.users["424242"], "backup still has the legacy user");
+    const mainAfterPreview = await client.query("SELECT revision FROM elfin_state WHERE id = 'main'");
+    assert(mainAfterPreview.rows[0].revision === mainBefore.rows[0].revision, "reading the backup did not rewrite main");
     const open = await call(port, "/api/order/create", { method: "POST", body: { city: "HH", items: [{ productId: "north:10", quantity: 1 }] } });
     assert(open.status === 401 && open.data.error === "Authentication required", "create without session");
     const dev = await call(port, "/api/auth/dev", { method: "POST", body: { tgId: "123456789" } });
@@ -385,6 +392,10 @@ async function runIntegration() {
     const storedIds = Object.keys(afterIdem.payload.state.orders);
     assert(storedIds.includes(created.data.orderId) && storedIds.includes("ORD-LEGACY"), "create stored and legacy remains");
     assert(storedIds.length === 2, "idempotent checkout did not insert a second order");
+    const held = afterIdem.payload.state.reservations.filter((item) => item.order_id === created.data.orderId && item.released === false);
+    assert(held.length === 1 && held[0].product_id === "north:10", "reservation stored");
+    assert(Object.keys(afterIdem.payload.state.orderIdempotency).length === 1, "one idempotency record");
+    record("order", true, `POST /api/order/create ${created.status} ${created.data.orderId}`);
     record("F", true, "identical checkout");
     const [left, right] = await Promise.all([
       call(port, "/api/order/create", {
@@ -418,6 +429,12 @@ async function runIntegration() {
       body: { ...confirmBody, orderId: created.data.orderId },
     });
     assert(confirmed.status === 200 && confirmed.data.status === "pending", "confirm");
+    const placed = await mainShape(client);
+    const placedOrder = placed.payload.state.orders[created.data.orderId];
+    const note = placed.payload.state.notices.find((item) => item.order_id === created.data.orderId);
+    assert(placedOrder.courier_id === "courier-north", "courier assigned");
+    assert(note && note.sent === false && note.status === "blocked" && note.last_error === "TEST_RECIPIENT_BLOCKED", "notice blocked before Telegram");
+    record("notice", true, `status=${note.status} sent=${note.sent}`);
     const courierLogin = await login(port, { id: 100000001, first_name: "Север", username: "courier_north" });
     assert(courierLogin.status === 200 && courierLogin.data.user.status === "courier", "courier session");
     const stranger = await call(port, "/api/courier/orders/status", {
@@ -469,13 +486,19 @@ async function runIntegration() {
     await stopServer(child);
     child = startApi(dir, port);
     const restarted = await waitReady(port, child);
-    assert(restarted.stateSchema === 1, "schema after restart");
+    assert(restarted.stateSchema === 1 && restarted.reservationCleanup === "ok", "schema after restart");
+    const restartLog = child.readLog();
+    assert(!restartLog.includes("Reservation cleanup error") && restartLog.includes("Reservation cleanup: ok"), "second boot cleanup");
+    assert(!restartLog.includes("State migration:"), "second boot does not migrate again");
     const againLogin = await login(port, { id: 123456789, first_name: "Клиент", username: "customer_example" });
     const againHistory = await call(port, "/api/order/history?city=HH", { token: againLogin.data.token });
     const ids = againHistory.data.orders.map((order) => order.orderId);
     assert(ids.includes(created.data.orderId) && ids.includes(deliveredOrder.data.orderId), "orders survive restart");
     const persisted = await mainShape(client);
     assert(persisted.payload.state.orders[created.data.orderId] && persisted.payload.state.orders["ORD-LEGACY"], "postgres still has both orders");
+    assert(persisted.payload.state.schemaVersion === 1 && persisted.payload.state.users["424242"], "legacy user survived restart");
+    const backupCount = await client.query("SELECT count(*)::int AS count FROM elfin_state WHERE id LIKE 'backup-%'");
+    assert(backupCount.rows[0].count === 1, "restart did not add another backup");
     assert(!child.readLog().includes("not iterable"), "restart cleanup has no TypeError");
     record("K", true, "restart persistence");
     await stopServer(child);
