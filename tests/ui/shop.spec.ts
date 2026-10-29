@@ -389,7 +389,7 @@ test("отказ API оставляет корзину и показывает �
   await page.getByRole("button", { name: "Самовывоз" }).click();
   mode = "down";
   await page.getByRole("button", { name: "Подтвердить заказ" }).click();
-  await expect(page.getByRole("alert")).toContainText("Оформление заказов временно недоступно.");
+  await expect(page.getByRole("alert")).toContainText("Оформление тестовых заказов пока недоступно.");
   mode = "missing";
   await page.getByRole("button", { name: "Подтвердить заказ" }).click();
   await expect(page.getByRole("alert")).toContainText("Заказ не удалось сохранить. Попробуйте ещё раз.");

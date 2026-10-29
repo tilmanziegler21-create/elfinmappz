@@ -54,6 +54,7 @@ export function VariantBottomSheet({
     };
   }, [open, onClose, reduce]);
 
+  const host = document.querySelector(".stage") ?? document.body;
   return createPortal(
     <AnimatePresence>
       {open ? (
@@ -119,6 +120,6 @@ export function VariantBottomSheet({
         </motion.div>
       ) : null}
     </AnimatePresence>,
-    document.body,
+    host,
   );
 }

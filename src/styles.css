@@ -73,9 +73,11 @@ button {
 
 .stage {
   height: 100%;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   position: relative;
+  overflow: hidden;
   z-index: 1;
 }
 
@@ -1048,10 +1050,13 @@ button {
 .sheet-panel {
   position: relative;
   display: flex;
+  flex-direction: column;
   width: 100%;
-  height: min(88dvh, calc(var(--app-height, 100dvh) - 24px));
-  max-height: min(88dvh, calc(var(--app-height, 100dvh) - 24px));
-  padding: 6px 14px calc(10px + env(safe-area-inset-bottom));
+  min-height: 0;
+  overflow: hidden;
+  height: min(88dvh, calc(var(--app-height, 100dvh) - 24px - var(--keyboard-inset, 0px)));
+  max-height: min(88dvh, calc(var(--app-height, 100dvh) - 24px - var(--keyboard-inset, 0px)));
+  padding: 6px 14px calc(10px + var(--safe-bottom, env(safe-area-inset-bottom)));
   border-radius: 30px 30px 0 0;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), #eef5fb);
   box-shadow: 0 -12px 32px rgba(18, 58, 109, 0.12);
@@ -1068,6 +1073,7 @@ button {
   flex: 1;
   min-height: 0;
   width: 100%;
+  overflow: hidden;
 }
 
 .order-sheet .sheet-head {
@@ -1206,6 +1212,7 @@ button {
 }
 
 .order-dock {
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -2129,7 +2136,7 @@ button {
 }
 
 .sheet-back {
-  position: fixed;
+  position: absolute;
   inset: 0;
   z-index: 30;
   display: flex;
@@ -2138,13 +2145,13 @@ button {
 }
 
 .sheet {
-  width: min(100%, 520px);
-  margin: 0 auto;
-  max-height: min(78vh, 640px);
+  width: 100%;
+  min-height: 0;
+  max-height: min(78%, calc(var(--app-height, 100dvh) - var(--keyboard-inset, 0px) - 24px));
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 10px 16px calc(16px + env(safe-area-inset-bottom));
+  padding: 10px 16px calc(16px + var(--safe-bottom, env(safe-area-inset-bottom)));
   border-radius: 22px 22px 0 0;
   background: rgba(244, 248, 251, 0.98);
   box-shadow: 0 -16px 40px rgba(18, 58, 109, 0.12);
@@ -2183,6 +2190,7 @@ button {
 }
 
 .sheet-list {
+  min-height: 0;
   overflow: auto;
   display: flex;
   flex-direction: column;
@@ -2756,10 +2764,37 @@ button {
   padding-bottom: max(8px, env(safe-area-inset-bottom));
 }
 
-.checkout-error {
+.checkout-note {
   margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.checkout-note a {
+  color: var(--blue);
+  font-weight: 700;
+}
+
+.checkout-page .fact {
+  min-height: 40px;
+  padding: 8px 12px;
+}
+
+.checkout-page .fact strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.checkout-error {
+  box-sizing: border-box;
+  height: 34px;
+  margin: 0;
+  overflow: auto;
   color: #9a4a4a;
   font-size: 13px;
+  line-height: 1.3;
 }
 
 .order-list {

@@ -40,9 +40,20 @@ export function bindTelegramViewport() {
   const root = document.documentElement;
   const apply = () => {
     const web = telegramWebApp();
-    const reported = Number(web?.viewportHeight);
-    if (web && Number.isFinite(reported) && reported > 0) root.style.setProperty("--app-height", `${Math.round(reported)}px`);
+    const stable = Number(web?.viewportStableHeight);
+    const current = Number(web?.viewportHeight);
+    if (web && Number.isFinite(stable) && stable > 0) root.style.setProperty("--app-height", `${Math.round(stable)}px`);
+    else if (web && Number.isFinite(current) && current > 0) root.style.setProperty("--app-height", `${Math.round(current)}px`);
     else root.style.removeProperty("--app-height");
+    let keyboard = 0;
+    if (web && Number.isFinite(stable) && stable > 0 && Number.isFinite(current) && current > 0) keyboard = Math.max(0, Math.round(stable - current));
+    const viewport = window.visualViewport;
+    if (!web && viewport && viewport.scale <= 1) {
+      keyboard = Math.max(0, Math.round(window.innerHeight - viewport.height - viewport.offsetTop));
+      if (keyboard < 80) keyboard = 0;
+    }
+    if (keyboard > 0) root.style.setProperty("--keyboard-inset", `${keyboard}px`);
+    else root.style.removeProperty("--keyboard-inset");
     const inset = web?.contentSafeAreaInset?.bottom ?? web?.safeAreaInset?.bottom;
     if (typeof inset === "number" && inset >= 0) root.style.setProperty("--safe-bottom", `${Math.round(inset)}px`);
     else root.style.removeProperty("--safe-bottom");

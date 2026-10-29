@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { CrystalIllustration } from "./CrystalIllustration";
 import { EmptyState } from "./EmptyState";
@@ -57,31 +57,6 @@ export function CheckoutScreen({
   const [phase, setPhase] = useState<"form" | "loading" | "done">("form");
   const [orderId, setOrderId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    const viewport = window.visualViewport;
-    const panel = document.querySelector(".sheet-panel");
-    if (!viewport || !(panel instanceof HTMLElement)) return;
-    const fit = () => {
-      if (viewport.scale > 1) {
-        panel.style.maxHeight = "";
-        panel.style.marginBottom = "";
-        return;
-      }
-      const keyboard = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
-      panel.style.maxHeight = `${Math.max(320, viewport.height - 28)}px`;
-      panel.style.marginBottom = `${keyboard}px`;
-    };
-    fit();
-    viewport.addEventListener("resize", fit);
-    viewport.addEventListener("scroll", fit);
-    return () => {
-      viewport.removeEventListener("resize", fit);
-      viewport.removeEventListener("scroll", fit);
-      panel.style.maxHeight = "";
-      panel.style.marginBottom = "";
-    };
-  }, []);
 
   function chooseCourier(id: string) {
     const next = couriers.find((item) => item.courier_id === id);
@@ -186,12 +161,7 @@ export function CheckoutScreen({
       setBusy(false);
       setPhase("form");
       const message = reason instanceof Error ? reason.message : "";
-      const validation = message === "Выберите время" || message === "Выберите курьера" || message === "Укажите адрес" || message === "Укажите точку встречи";
-      setError(message === "ORDERS_NEED_DATABASE"
-        ? "Оформление заказов временно недоступно."
-        : validation
-          ? message
-          : "Заказ не удалось сохранить. Попробуйте ещё раз.");
+      setError(checkoutNotice(message));
     }
   }
 
@@ -261,10 +231,7 @@ export function CheckoutScreen({
             <div className="fact"><span>Telegram ID</span><strong>{user.tgId}</strong></div>
           </div>
         ) : authPhase === "initializing" ? null : (
-          <div>
-            <p className="cart-caption">{authPhase === "expired" || authPhase === "error" || authFailed ? "Не удалось подтвердить вход через Telegram. Откройте приложение заново." : "Откройте магазин через Telegram, чтобы подтвердить заказ."}</p>
-            {botUrl ? <a className="btn btn-primary" href={botUrl}>Открыть через Telegram</a> : null}
-          </div>
+          <p className="checkout-note">{authPhase === "expired" || authPhase === "error" || authFailed ? "Не удалось подтвердить вход через Telegram. Откройте приложение заново." : "Откройте магазин через Telegram, чтобы подтвердить заказ."}{botUrl ? <> <a href={botUrl}>Открыть через Telegram</a></> : null}</p>
         )}
         <label className="order-field">
           <span>Курьер</span>
@@ -306,7 +273,7 @@ export function CheckoutScreen({
         </label>
       </div>
       <div className="order-dock">
-        {error ? <p className="checkout-error" role="alert">{error}</p> : null}
+        <p className="checkout-error" role={error ? "alert" : undefined}>{error ?? ""}</p>
         <div className="pay-row" role="group" aria-label="Оплата">
           <button type="button" className={payment === "cash" ? "pay-tile is-on" : "pay-tile"} aria-pressed={payment === "cash"} disabled={!payments.includes("cash")} onClick={() => setPayment("cash")}>
             {payment === "cash" ? <svg className="pay-check" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.2 6.2 11.5 13 4.5" fill="none" stroke="currentColor" strokeWidth="1.8" /></svg> : null}
@@ -337,4 +304,11 @@ export function CheckoutScreen({
       </div>
     </div>
   );
+}
+
+function checkoutNotice(message: string) {
+  if (message === "ORDERS_NEED_DATABASE") return "Оформление тестовых заказов пока недоступно.";
+  if (message === "Выберите курьера" || message === "Выберите время" || message === "Укажите адрес" || message === "Укажите точку встречи") return message.endsWith(".") ? message : `${message}.`;
+  if (message === "Этот способ оплаты недоступен.") return message;
+  return "Заказ не удалось сохранить. Попробуйте ещё раз.";
 }
