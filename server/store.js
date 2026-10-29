@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
-import { hydrateFromPostgres, queueSnapshot } from "./pgState.js";
+import { hydrateFromPostgres, queueSnapshot, whenPersisted as waitForPostgres } from "./pgState.js";
+import { describeState, expireReservationRecords, mergeSnapshots, normalizeSnapshot } from "./stateShape.js";
 
 const dataDir = process.env.DATA_DIR || path.join(process.cwd(), "data");
 const stateFile = path.join(dataDir, "state.json");
@@ -16,6 +17,7 @@ const ORDER_COLUMNS = [
 
 function emptyState() {
   return {
+    schemaVersion: 1,
     users: {},
     orders: {},
     items: [],
@@ -25,6 +27,7 @@ function emptyState() {
     paymentIdempotency: {},
     notices: [],
     stockMoves: [],
+    tickets: [],
   };
 }
 
@@ -85,11 +88,21 @@ const state = loaded.state;
 const sheet = loaded.sheet;
 
 function ensureShape() {
-  if (!Object.keys(state.users || {}).length) state.users = seedUsers();
-  if (!Array.isArray(state.stockMoves)) state.stockMoves = [];
-  if (!Array.isArray(state.notices)) state.notices = [];
-  if (!Array.isArray(state.tickets)) state.tickets = [];
-  if (!sheet.products?.length) Object.assign(sheet, seedSheet());
+  const report = normalizeSnapshot(state, sheet);
+  if (!Object.keys(state.users).length) state.users = seedUsers();
+  if (!sheet.products.length) {
+    const seed = seedSheet();
+    sheet.products = seed.products;
+    if (!sheet.couriers.length) sheet.couriers = seed.couriers;
+    if (!Object.keys(sheet.liquidPrices).length) sheet.liquidPrices = seed.liquidPrices;
+  }
+  return report;
+}
+
+function adoptSnapshot(saved) {
+  const merged = mergeSnapshots(saved, { state, sheet });
+  replaceContents(state, merged.state);
+  replaceContents(sheet, merged.sheet);
 }
 
 function replaceContents(target, source) {
@@ -101,11 +114,30 @@ ensureShape();
 
 export async function hydrateStore() {
   if (!String(process.env.DATABASE_URL || "").trim()) return "ephemeral";
-  const payload = await hydrateFromPostgres({ state, sheet });
-  if (payload?.state && payload?.sheet) {
-    replaceContents(state, payload.state);
-    replaceContents(sheet, payload.sheet);
-    ensureShape();
+  const loaded = await hydrateFromPostgres({ state, sheet });
+  if (!loaded?.payload?.state || !loaded?.payload?.sheet) {
+    const error = new Error("STATE_MIGRATION_STOPPED");
+    error.code = "STATE_MIGRATION_STOPPED";
+    error.field = "payload";
+    throw error;
+  }
+  console.log(`State schema before: ${describeState(loaded.payload.state, loaded.payload.sheet)}`);
+  replaceContents(state, loaded.payload.state);
+  replaceContents(sheet, loaded.payload.sheet);
+  let report;
+  try {
+    report = ensureShape();
+  } catch (error) {
+    console.error(`State migration stopped: ${error.field || "state"}`);
+    throw error;
+  }
+  console.log(`State schema: ${describeState(state, sheet)}`);
+  if (report.filled.length || report.converted.length) {
+    console.log(`State migration: filled=${report.filled.join(",") || "-"} converted=${report.converted.join(",") || "-"}`);
+  }
+  if (report.changed && loaded.original) {
+    await loaded.backup(loaded.original);
+    await persist();
   }
   return "persistent";
 }
@@ -117,7 +149,12 @@ export function persist() {
   fs.renameSync(tmp, checkpointFile);
   writeJson(stateFile, state);
   writeJson(sheetFile, sheet);
-  if (String(process.env.DATABASE_URL || "").trim()) queueSnapshot({ state, sheet });
+  if (String(process.env.DATABASE_URL || "").trim()) return queueSnapshot({ state, sheet }, adoptSnapshot);
+  return Promise.resolve();
+}
+
+export function whenPersisted() {
+  return waitForPostgres();
 }
 
 export function db() {
@@ -138,21 +175,30 @@ export function blankOrderRow(partial) {
   return { ...row, ...partial };
 }
 
-export function upsertOrderRow(partial) {
+export function upsertOrderRow(partial, options = {}) {
   const index = sheet.orders.findIndex((item) => String(item.order_id) === String(partial.order_id));
   if (index >= 0) sheet.orders[index] = { ...sheet.orders[index], ...partial };
   else sheet.orders.push(blankOrderRow(partial));
-  persist();
+  if (options.persist !== false) persist();
   return sheet.orders[index >= 0 ? index : sheet.orders.length - 1];
+}
+
+function reservationList() {
+  if (!Array.isArray(state.reservations)) {
+    const error = new Error("reservations is not iterable");
+    error.code = "STATE_RESERVATIONS_INVALID";
+    throw error;
+  }
+  return state.reservations;
 }
 
 export function activeReservations(sku) {
   const now = Date.now();
-  return state.reservations.filter((item) => item.product_id === sku && item.released === false && item.expiry_ms > now);
+  return reservationList().filter((item) => item.product_id === sku && item.released === false && item.expiry_ms > now);
 }
 
 export function addReservation(orderId, sku, qty, ttlMs) {
-  state.reservations.push({
+  reservationList().push({
     order_id: orderId,
     product_id: sku,
     qty,
@@ -162,8 +208,8 @@ export function addReservation(orderId, sku, qty, ttlMs) {
 }
 
 export function releaseReservations(orderId) {
-  for (const item of state.reservations) {
-    if (item.order_id === orderId) item.released = true;
+  for (const item of reservationList()) {
+    if (item.order_id === orderId && item.released !== true) item.released = true;
   }
 }
 
@@ -189,32 +235,16 @@ export function withOrderLock(orderId, fn) {
 }
 
 export function expireReservations() {
-  const now = Date.now();
-  const expired = new Set();
-  for (const item of state.reservations) {
-    if (item.released === false && item.expiry_ms <= now) {
-      item.released = true;
-      expired.add(item.order_id);
-    }
-  }
-  const cancelled = [];
-  for (const orderId of expired) {
+  const cancelled = expireReservationRecords(state.reservations, state.orders, Date.now());
+  for (const orderId of cancelled) {
     const order = state.orders[orderId];
-    if (!order) continue;
-    if (order.stock_committed) continue;
-    if (order.status !== "buffer" && order.status !== "pending") continue;
-    order.status = "cancelled";
-    order.cancelled_at = new Date().toISOString();
-    order.cancel_reason = order.cancel_reason || "Резерв истёк";
     upsertOrderRow({
       order_id: orderId,
       status: "cancelled",
       cancelled_at: order.cancelled_at,
       cancel_reason: order.cancel_reason,
     });
-    cancelled.push(orderId);
   }
-  if (cancelled.length) persist();
   return cancelled;
 }
 

@@ -16,6 +16,7 @@ import {
   persist,
   releaseReservations,
   upsertOrderRow,
+  whenPersisted,
   withOrderLock,
   workbook,
 } from "./store.js";
@@ -498,8 +499,8 @@ async function applyConfirm(order, next, data, courier) {
     if (!order.telegram_sent) {
       const notice = await notifyCourier(order, courier);
       order.telegram_sent = Boolean(notice?.sent);
-      persist();
     }
+    persist();
     return { status: 200, payload: { success: true, status: normalizeStatus(order.status), telegram: Boolean(order.telegram_sent) } };
   }
   const current = normalizeStatus(order.status);
@@ -593,6 +594,7 @@ app.get("/api/ready", async (_req, res) => {
     telegram,
     sheets: await sheetsReady(),
     database: storageMode(),
+    stateSchema: Number(db().schemaVersion || 0),
     writes: false,
   });
 });
@@ -799,7 +801,7 @@ app.post("/api/order/create", refuseEphemeralOrders, requireAuth, async (req, re
     items_json: JSON.stringify(normalized),
     user_name: order.user_name,
     stock_committed: "FALSE",
-  }));
+  }), { persist: false });
   const payload = {
     orderId,
     orderText: `Новый заказ ${orderId}\nСумма: ${priced.total}\nТовары: ${normalized.length} позиций`,
@@ -808,9 +810,25 @@ app.post("/api/order/create", refuseEphemeralOrders, requireAuth, async (req, re
     expiresAt: order.expires_at,
   };
   if (key) db().orderIdempotency[key] = { payload, expiresAt: Date.now() + 10 * 60 * 1000 };
-  persist();
+  try {
+    await persist();
+  } catch (error) {
+    console.error("Order persist failed:", error?.code || error?.message || "error");
+    dropUnsavedOrder(orderId, key);
+    return res.status(500).json({ error: "Order was not saved" });
+  }
   res.json(payload);
 });
+
+function dropUnsavedOrder(orderId, key) {
+  delete db().orders[orderId];
+  db().items = db().items.filter((item) => item.order_id !== orderId);
+  db().reservations = db().reservations.filter((item) => item.order_id !== orderId);
+  const rows = workbook().orders;
+  const index = rows.findIndex((item) => String(item.order_id) === String(orderId));
+  if (index >= 0) rows.splice(index, 1);
+  if (key) delete db().orderIdempotency[key];
+}
 
 app.post("/api/order/confirm", refuseEphemeralOrders, requireAuth, async (req, res) => {
   const order = db().orders[String(req.body?.orderId || "")];
@@ -841,12 +859,19 @@ app.post("/api/order/confirm", refuseEphemeralOrders, requireAuth, async (req, r
     place,
     comment: String(data.comment || "").trim(),
   };
+  let result;
   try {
-    const result = await withOrderLock(order.id, () => applyConfirm(order, next, data, courier));
-    res.status(result.status).json(result.payload);
+    result = await withOrderLock(order.id, () => applyConfirm(order, next, data, courier));
   } catch (error) {
-    res.status(error.status || 500).json({ error: error.message || "Error" });
+    return res.status(error.status || 500).json({ error: error.message || "Error" });
   }
+  try {
+    await whenPersisted();
+  } catch (error) {
+    console.error("Order persist failed:", error?.code || error?.message || "error");
+    return res.status(500).json({ error: "Order was not saved" });
+  }
+  res.status(result.status).json(result.payload);
 });
 
 app.post("/api/order/payment", refuseEphemeralOrders, requireAuth, (req, res) => {
@@ -1000,12 +1025,19 @@ async function applyCourierStatus(user, orderId, next, reason) {
 app.post("/api/courier/orders/status", requireAuth, async (req, res) => {
   const city = cityOf(req.body?.city);
   if (!city) return res.status(400).json({ error: "City parameter is required" });
+  let payload;
   try {
-    const payload = await applyCourierStatus(req.user, req.body?.orderId, req.body?.status, req.body?.reason);
-    res.json(payload);
+    payload = await applyCourierStatus(req.user, req.body?.orderId, req.body?.status, req.body?.reason);
   } catch (error) {
-    res.status(error.status || 500).json({ error: error.message || "Error" });
+    return res.status(error.status || 500).json({ error: error.message || "Error" });
   }
+  try {
+    await whenPersisted();
+  } catch (error) {
+    console.error("Order persist failed:", error?.code || error?.message || "error");
+    return res.status(500).json({ error: "Order was not saved" });
+  }
+  res.json(payload);
 });
 
 app.get("/api/admin/orders", requireAuth, (req, res) => {
@@ -1338,8 +1370,8 @@ async function boot() {
 }
 
 if (process.env.NODE_ENV === "test") resumeStockMoves();
-else boot().catch(() => {
-  console.error("Storage init failed");
+else boot().catch((error) => {
+  console.error("Storage init failed:", error?.code || error?.message || "error");
   process.exit(1);
 });
 
