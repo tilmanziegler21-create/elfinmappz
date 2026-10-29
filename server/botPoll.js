@@ -99,6 +99,7 @@ async function show(token, action) {
 
 const telegramProbe = {
   getMe: "pending",
+  username: "",
   webhook: "pending",
   pendingUpdates: null,
   lastError: "",
@@ -123,7 +124,7 @@ function expectedWebhook() {
 
 export function telegramProbeState() {
   if (!String(process.env.TELEGRAM_BOT_TOKEN || "").trim()) {
-    return { getMe: "unconfigured", webhook: "unconfigured", pendingUpdates: null, lastError: "" };
+    return { getMe: "unconfigured", username: "", webhook: "unconfigured", pendingUpdates: null, lastError: "" };
   }
   return { ...telegramProbe };
 }
@@ -142,9 +143,10 @@ async function readWebhook(token) {
 
 export async function probeTelegram(token) {
   try {
-    await call(token, "getMe", {});
+    const me = await call(token, "getMe", {});
     telegramProbe.getMe = "PASS";
-    console.log("Telegram getMe: PASS");
+    telegramProbe.username = String(me?.result?.username || "").replace(/[^A-Za-z0-9_]/g, "").slice(0, 32);
+    console.log(telegramProbe.username ? `Telegram getMe: PASS username=${telegramProbe.username}` : "Telegram getMe: PASS");
   } catch (error) {
     telegramProbe.getMe = publicError(error);
     telegramProbe.webhook = "skipped";

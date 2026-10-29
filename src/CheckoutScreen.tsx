@@ -65,28 +65,42 @@ export function CheckoutScreen({
     if (fulfillment === "pickup" && next?.meeting_place) setPlace(next.meeting_place);
   }
 
+  function reportCheckout(code: string) {
+    const requestId = idempotencyKey.current;
+    void api("/api/order/trace", {
+      method: "POST",
+      headers: { "x-request-id": requestId },
+      body: { stage: "CHECKOUT_SUBMIT", code },
+    }).catch(() => undefined);
+  }
+
   async function submit() {
     if (busy || phase !== "form") return;
     if (!token || authPhase === "expired" || authPhase === "error") {
+      reportCheckout(!token ? "NO_BEARER" : "AUTH_PHASE");
       setError(authFailed || authPhase === "expired" || authPhase === "error"
         ? "Не удалось подтвердить вход через Telegram. Откройте приложение заново."
         : "Откройте магазин через Telegram, чтобы подтвердить заказ.");
       return;
     }
     if (!payments.includes(payment)) {
+      reportCheckout("PAYMENT_UNAVAILABLE");
       setError("Этот способ оплаты недоступен.");
       return;
     }
     if (!courier) {
+      reportCheckout("NO_COURIER");
       setError("Выберите курьера.");
       return;
     }
     if (!time) {
+      reportCheckout("NO_SLOT");
       setError("Выберите время.");
       return;
     }
     const meeting = fulfillment === "pickup" ? (courier.meeting_place || "Самовывоз") : place.trim();
     if (fulfillment === "delivery" && meeting.length < 2) {
+      reportCheckout("NO_ADDRESS");
       setError("Укажите адрес.");
       return;
     }
@@ -98,7 +112,7 @@ export function CheckoutScreen({
         const created = await api<{ orderId: string }>("/api/order/create", {
           method: "POST",
           token,
-          headers: { "Idempotency-Key": idempotencyKey.current },
+          headers: { "Idempotency-Key": idempotencyKey.current, "x-request-id": idempotencyKey.current },
           body: {
             city,
             promoCode: "",
@@ -115,6 +129,7 @@ export function CheckoutScreen({
         const confirmedBody = await api<{ telegram?: boolean }>("/api/order/confirm", {
           method: "POST",
           token,
+          headers: { "x-request-id": idempotencyKey.current },
           body: {
             orderId: createdId.current,
             city,
@@ -161,6 +176,7 @@ export function CheckoutScreen({
       setBusy(false);
       setPhase("form");
       const message = reason instanceof Error ? reason.message : "";
+      if (message === "Сервер не ответил.") reportCheckout("SERVER_UNREACHABLE");
       setError(checkoutNotice(message));
     }
   }

@@ -149,17 +149,81 @@ function publicUser(user) {
   };
 }
 
+const lastOrderTrace = { stage: "pending", code: "" };
+
+function requestIdOf(req) {
+  const raw = String(req.get("x-request-id") || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 48);
+  return raw || `srv-${Date.now().toString(36)}`;
+}
+
+function orderTrace(requestId, stage, code) {
+  const safeStage = String(stage || "").replace(/[^A-Z_]/g, "").slice(0, 40) || "UNKNOWN";
+  const safeCode = String(code || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 48) || "UNKNOWN";
+  lastOrderTrace.stage = safeStage;
+  lastOrderTrace.code = safeCode;
+  console.log(`ORDER requestId=${requestId} stage=${safeStage} code=${safeCode}`);
+}
+
+function logAuth(req, code) {
+  if (req.orderTraceId) orderTrace(req.orderTraceId, "AUTH_VALIDATED", code);
+}
+
+function mark(req, stage, code) {
+  if (req.orderTraceId) orderTrace(req.orderTraceId, stage, code);
+}
+
+function priceFailureCode(error) {
+  const code = String(error || "");
+  if (code === "PRICE_RULES_AMBIGUOUS" || code === "INVALID_PROMO") return code;
+  return "PRICE_REJECTED";
+}
+
+function beginOrderTrace(req, _res, next) {
+  req.orderTraceId = requestIdOf(req);
+  const bearer = String(req.headers.authorization || "").startsWith("Bearer ");
+  orderTrace(req.orderTraceId, "CHECKOUT_SUBMIT", bearer ? "bearer" : "no_bearer");
+  next();
+}
+
+function authFailureCode(error) {
+  const known = {
+    "Bot token not configured": "BOT_TOKEN_MISSING",
+    "No hash in initData": "NO_HASH",
+    "Invalid hash": "INVALID_HASH",
+    "Expired initData": "EXPIRED_INITDATA",
+    "No user in initData": "NO_USER",
+  };
+  return known[String(error?.message || "")] || "AUTH_FAILED";
+}
+
+function noticeResultCode(notice) {
+  if (notice?.sent) return "SENT";
+  const known = ["TEST_RECIPIENT_BLOCKED", "NO_TOKEN", "NO_RECIPIENT", "TELEGRAM_REJECTED", "TIMEOUT", "TELEGRAM_ERROR"];
+  return known.includes(notice?.last_error) ? notice.last_error : "NOT_SENT";
+}
+
 function requireAuth(req, res, next) {
-  if (!JWT_SECRET) return res.status(500).json({ error: "JWT secret is not configured" });
+  if (!JWT_SECRET) {
+    logAuth(req, "JWT_SECRET_MISSING");
+    return res.status(500).json({ error: "JWT secret is not configured" });
+  }
   const header = String(req.headers.authorization || "");
-  if (!header.startsWith("Bearer ")) return res.status(401).json({ error: "Authentication required" });
+  if (!header.startsWith("Bearer ")) {
+    logAuth(req, "NO_BEARER");
+    return res.status(401).json({ error: "Authentication required" });
+  }
   try {
     const payload = jwt.verify(header.slice(7), JWT_SECRET);
     const user = db().users[String(payload.tgId)];
-    if (!user) return res.status(401).json({ error: "User not found" });
+    if (!user) {
+      logAuth(req, "USER_NOT_FOUND");
+      return res.status(401).json({ error: "User not found" });
+    }
     req.user = user;
+    logAuth(req, "ok");
     next();
   } catch {
+    logAuth(req, "INVALID_TOKEN");
     return res.status(401).json({ error: "Invalid token" });
   }
 }
@@ -496,11 +560,18 @@ function resumeStockMoves() {
   }
 }
 
-async function applyConfirm(order, next, data, courier) {
+async function recordCourierNotice(requestId, order, courier) {
+  if (requestId) orderTrace(requestId, "COURIER_NOTIFICATION_ATTEMPTED", "ok");
+  const notice = await notifyCourier(order, courier);
+  if (requestId) orderTrace(requestId, "COURIER_NOTIFICATION_RESULT", noticeResultCode(notice));
+  return notice;
+}
+
+async function applyConfirm(order, next, data, courier, requestId) {
   if (order.delivery_locked) {
     if (!sameMeeting(order, next)) return { status: 409, payload: { error: "CONFIRM_CONFLICT" } };
     if (!order.telegram_sent) {
-      const notice = await notifyCourier(order, courier);
+      const notice = await recordCourierNotice(requestId, order, courier);
       order.telegram_sent = Boolean(notice?.sent);
     }
     persist();
@@ -535,7 +606,7 @@ async function applyConfirm(order, next, data, courier) {
   });
   if (!order.courier_notified_at || !order.telegram_sent) {
     order.courier_notified_at = order.courier_notified_at || new Date().toISOString();
-    const notice = await notifyCourier(order, courier);
+    const notice = await recordCourierNotice(requestId, order, courier);
     order.telegram_sent = Boolean(notice?.sent);
   }
   return { status: 200, payload: { success: true, status: order.status, telegram: Boolean(order.telegram_sent) } };
@@ -582,11 +653,13 @@ function storageMode() {
   return "ephemeral";
 }
 
-function acceptState(res) {
+function acceptState(res, requestId) {
   try {
     ensureRuntimeState();
     return true;
   } catch (error) {
+    const code = String(error.code || "STATE_MIGRATION_STOPPED").replace(/[^A-Z0-9_]/g, "") || "STATE_MIGRATION_STOPPED";
+    if (requestId) orderTrace(requestId, "ORDER_VALIDATED", code);
     res.status(500).json({ error: error.code || "STATE_MIGRATION_STOPPED" });
     return false;
   }
@@ -594,6 +667,7 @@ function acceptState(res) {
 
 function refuseEphemeralOrders(req, res, next) {
   if (process.env.NODE_ENV === "production" && storageMode() !== "persistent") {
+    if (req.orderTraceId) orderTrace(req.orderTraceId, "ORDER_VALIDATED", "ORDERS_NEED_DATABASE");
     res.status(503).json({ error: "ORDERS_NEED_DATABASE" });
     return;
   }
@@ -607,9 +681,12 @@ app.get("/api/ready", async (_req, res) => {
     api: "ready",
     telegram,
     telegramGetMe: probe.getMe,
+    telegramBot: probe.username || "",
     telegramWebhook: probe.webhook,
     telegramPending: probe.pendingUpdates,
     telegramLastError: probe.lastError,
+    orderStage: lastOrderTrace.stage,
+    orderCode: lastOrderTrace.code,
     sheets: await sheetsReady(),
     database: storageMode(),
     stateSchema: Number(db().schemaVersion || 0),
@@ -648,14 +725,27 @@ app.post("/api/auth/dev", (req, res) => {
 });
 
 app.post("/api/auth/telegram", (req, res) => {
+  const requestId = requestIdOf(req);
   try {
     const telegramUser = verifyInitData(String(req.body?.initData || ""));
     const user = ensureUser(telegramUser.id, telegramUser.username, telegramUser.first_name, telegramUser.last_name);
     persist();
+    orderTrace(requestId, "AUTH_VALIDATED", "ok");
     res.json({ token: signUser(user), user: publicUser(user), dev: false, city: CITY });
   } catch (error) {
+    orderTrace(requestId, "AUTH_VALIDATED", authFailureCode(error));
     res.status(error.status || 401).json({ error: error.message || "Authentication failed" });
   }
+});
+
+app.post("/api/order/trace", (req, res) => {
+  const stage = String(req.body?.stage || "");
+  const code = String(req.body?.code || "");
+  const stages = new Set(["CHECKOUT_SUBMIT"]);
+  const codes = new Set(["NO_BEARER", "AUTH_PHASE", "NO_COURIER", "NO_SLOT", "NO_ADDRESS", "PAYMENT_UNAVAILABLE", "SERVER_UNREACHABLE"]);
+  if (!stages.has(stage) || !codes.has(code)) return res.status(400).json({ error: "Invalid trace" });
+  orderTrace(requestIdOf(req), stage, code);
+  res.json({ ok: true });
 });
 
 app.get("/api/catalog", async (req, res) => {
@@ -725,17 +815,26 @@ app.get("/api/couriers", async (req, res) => {
   }
 });
 
-app.post("/api/order/create", refuseEphemeralOrders, requireAuth, async (req, res) => {
+app.post("/api/order/create", beginOrderTrace, refuseEphemeralOrders, requireAuth, async (req, res) => {
   const city = cityOf(req.body?.city);
   const items = req.body?.items;
-  if (!city || !Array.isArray(items) || items.length === 0) return res.status(400).json({ error: "Invalid order data" });
-  if (!acceptState(res)) return;
+  if (!city || !Array.isArray(items) || items.length === 0) {
+    mark(req, "ORDER_VALIDATED", "INVALID_ORDER");
+    return res.status(400).json({ error: "Invalid order data" });
+  }
+  if (!acceptState(res, req.orderTraceId)) return;
   const headerKey = String(req.headers["idempotency-key"] || "").trim();
   const key = headerKey ? `${req.user.tg_id}:${headerKey}` : "";
   if (key) {
     const existing = db().orderIdempotency[key];
-    if (existing && existing.expiresAt > Date.now() && existing.payload) return res.json(existing.payload);
-    if (existing && existing.pending) return res.status(409).json({ error: "ORDER_IN_PROGRESS" });
+    if (existing && existing.expiresAt > Date.now() && existing.payload) {
+      mark(req, "ORDER_PERSISTED", "replay");
+      return res.json(existing.payload);
+    }
+    if (existing && existing.pending) {
+      mark(req, "ORDER_VALIDATED", "ORDER_IN_PROGRESS");
+      return res.status(409).json({ error: "ORDER_IN_PROGRESS" });
+    }
     if (key) db().orderIdempotency[key] = { pending: true, expiresAt: Date.now() + 10 * 60 * 1000 };
   }
 
@@ -745,6 +844,7 @@ app.post("/api/order/create", refuseEphemeralOrders, requireAuth, async (req, re
   } catch (error) {
     if (key) delete db().orderIdempotency[key];
     const failure = sheetsFailure(error);
+    mark(req, "ORDER_VALIDATED", failure.body.error);
     return res.status(failure.status).json(failure.body);
   }
   const normalized = [];
@@ -754,11 +854,13 @@ app.post("/api/order/create", refuseEphemeralOrders, requireAuth, async (req, re
     const product = catalog.products.find((row) => row.sku === sku);
     if (!product || !product.active) {
       if (key) delete db().orderIdempotency[key];
+      mark(req, "ORDER_VALIDATED", "PRODUCT_NOT_FOUND");
       return res.status(404).json({ error: `Product not found: ${sku}` });
     }
     const reserved = activeReservations(sku).reduce((sum, row) => sum + row.qty, 0);
     if (Number(product.stock) - reserved < qty || qty < 1) {
       if (key) delete db().orderIdempotency[key];
+      mark(req, "ORDER_VALIDATED", "INSUFFICIENT_STOCK");
       return res.status(409).json({ error: `Insufficient stock for ${sku}` });
     }
     normalized.push({
@@ -774,8 +876,10 @@ app.post("/api/order/create", refuseEphemeralOrders, requireAuth, async (req, re
   const priced = priceOrder(normalized, workbook().liquidPrices, req.body?.promoCode, req.user, db().promos);
   if (!priced.ok) {
     if (key) delete db().orderIdempotency[key];
+    mark(req, "ORDER_VALIDATED", priceFailureCode(priced.error));
     return res.status(400).json({ error: priced.error });
   }
+  mark(req, "ORDER_VALIDATED", "ok");
   if (priced.usedDeferred > 0) req.user.deferred_discount = 0;
 
   const orderId = `ORD-${Date.now().toString(36).toUpperCase()}`;
@@ -812,6 +916,7 @@ app.post("/api/order/create", refuseEphemeralOrders, requireAuth, async (req, re
     db().items.push({ order_id: orderId, ...item });
     addReservation(orderId, item.productId, item.quantity, RESERVATION_TTL_MS);
   }
+  mark(req, "RESERVATION_CREATED", "ok");
   upsertOrderRow(blankOrderRow({
     order_id: orderId,
     user_id: req.user.tg_id,
@@ -839,8 +944,10 @@ app.post("/api/order/create", refuseEphemeralOrders, requireAuth, async (req, re
   } catch (error) {
     console.error("Order persist failed:", error?.code || error?.message || "error");
     dropUnsavedOrder(orderId, key);
+    mark(req, "ORDER_PERSISTED", "PERSIST_FAILED");
     return res.status(500).json({ error: "Order was not saved" });
   }
+  mark(req, "ORDER_PERSISTED", "ok");
   res.json(payload);
 });
 
@@ -854,27 +961,46 @@ function dropUnsavedOrder(orderId, key) {
   if (key) delete db().orderIdempotency[key];
 }
 
-app.post("/api/order/confirm", refuseEphemeralOrders, requireAuth, async (req, res) => {
+app.post("/api/order/confirm", beginOrderTrace, refuseEphemeralOrders, requireAuth, async (req, res) => {
   const order = db().orders[String(req.body?.orderId || "")];
   const city = cityOf(req.body?.city || order?.city);
-  if (!order || !city) return res.status(404).json({ error: "Order not found" });
-  if (order.user_id !== req.user.tg_id) return res.status(403).json({ error: "Forbidden" });
+  if (!order || !city) {
+    mark(req, "ORDER_VALIDATED", "ORDER_NOT_FOUND");
+    return res.status(404).json({ error: "Order not found" });
+  }
+  if (order.user_id !== req.user.tg_id) {
+    mark(req, "ORDER_VALIDATED", "FORBIDDEN");
+    return res.status(403).json({ error: "Forbidden" });
+  }
   const method = String(req.body?.deliveryMethod || "");
-  if (method !== "courier" && method !== "pickup") return res.status(400).json({ error: "Invalid delivery method" });
+  if (method !== "courier" && method !== "pickup") {
+    mark(req, "ORDER_VALIDATED", "INVALID_DELIVERY");
+    return res.status(400).json({ error: "Invalid delivery method" });
+  }
   let catalog;
   try {
     catalog = await shopCatalog();
   } catch (error) {
     const failure = sheetsFailure(error);
+    mark(req, "ORDER_VALIDATED", failure.body.error);
     return res.status(failure.status).json(failure.body);
   }
   const courier = catalog.couriers.find((item) => item.active && item.courier_id === String(req.body?.courier_id || ""));
-  if (!courier) return res.status(400).json({ error: "Выберите курьера" });
+  if (!courier) {
+    mark(req, "ORDER_VALIDATED", "NO_COURIER");
+    return res.status(400).json({ error: "Выберите курьера" });
+  }
   const time = String(req.body?.delivery_time || "");
-  if (!slots(courier).includes(time)) return res.status(400).json({ error: "Выберите время" });
+  if (!slots(courier).includes(time)) {
+    mark(req, "ORDER_VALIDATED", "NO_SLOT");
+    return res.status(400).json({ error: "Выберите время" });
+  }
   const data = req.body?.courierData || {};
   const place = method === "pickup" && courier.meeting_place ? courier.meeting_place : String(data.address || "").trim();
-  if (place.length < 2) return res.status(400).json({ error: method === "courier" ? "Укажите адрес" : "Укажите точку встречи" });
+  if (place.length < 2) {
+    mark(req, "ORDER_VALIDATED", "NO_ADDRESS");
+    return res.status(400).json({ error: method === "courier" ? "Укажите адрес" : "Укажите точку встречи" });
+  }
   const next = {
     method,
     courier: courier.courier_id,
@@ -885,16 +1011,21 @@ app.post("/api/order/confirm", refuseEphemeralOrders, requireAuth, async (req, r
   };
   let result;
   try {
-    result = await withOrderLock(order.id, () => applyConfirm(order, next, data, courier));
+    result = await withOrderLock(order.id, () => applyConfirm(order, next, data, courier, req.orderTraceId));
   } catch (error) {
+    const status = Number(error.status || 500);
+    mark(req, "ORDER_VALIDATED", status === 409 ? "CONFIRM_CONFLICT" : status === 400 ? "CONFIRM_REJECTED" : "CONFIRM_FAILED");
     return res.status(error.status || 500).json({ error: error.message || "Error" });
   }
   try {
     await whenPersisted();
   } catch (error) {
     console.error("Order persist failed:", error?.code || error?.message || "error");
+    mark(req, "ORDER_PERSISTED", "PERSIST_FAILED");
     return res.status(500).json({ error: "Order was not saved" });
   }
+  if (result.payload?.error && /^[A-Z0-9_]+$/.test(result.payload.error)) mark(req, "ORDER_VALIDATED", result.payload.error);
+  else if (result.status === 200) mark(req, "ORDER_PERSISTED", "ok");
   res.status(result.status).json(result.payload);
 });
 
