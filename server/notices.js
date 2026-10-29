@@ -58,6 +58,8 @@ export async function trySendNotice(notice, send) {
     const result = await send(notice);
     const ok = result === true || result?.ok === true;
     const code = /^[A-Z0-9_]{1,40}$/.test(String(result?.code || "")) ? String(result.code) : "";
+    const messageId = Number(result?.messageId);
+    if (Number.isInteger(messageId) && messageId > 0) notice.telegram_message_id = messageId;
     if (ok) {
       notice.status = "sent";
       notice.sent = true;

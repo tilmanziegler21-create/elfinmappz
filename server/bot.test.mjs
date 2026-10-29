@@ -20,9 +20,12 @@ function record(id, ok, detail) {
 
 const users = new Map();
 const orders = [
-  { id: "ORD-1", user_id: "111", status: "pending", total_amount: 42.9, final_amount: 42.9, created_at: "2026-10-20T10:00:00.000Z", delivery_method: "courier", delivery_date: "2026-10-21", delivery_time: "13:00", delivery_address: "Ледяная 4", comment: "у двери", username: "client", user_phone: "", courier_id: "courier-north", lines: [{ name: "Арбуз", quantity: 1 }] },
-  { id: "ORD-2", user_id: "222", status: "pending", total_amount: 9, final_amount: 9, created_at: "2026-10-20T11:00:00.000Z", delivery_method: "pickup", delivery_address: "", comment: "", username: "other", courier_id: "courier-frost", lines: [] },
+  { id: "ORD-1", user_id: "111", status: "pending", total_amount: 42.9, final_amount: 42.9, created_at: "2026-10-20T10:00:00.000Z", delivery_method: "courier", delivery_date: "2026-10-29", delivery_time: "17:30", delivery_address: "Ледяная 4", comment: "у двери", username: "client", user_name: "Клиент", user_phone: "", payment_method: "cash", courier_id: "courier-north", lines: [{ name: "ELFLIQ", variant: "Blue Razz Ice", quantity: 1 }] },
+  { id: "ORD-2", user_id: "222", status: "pending", total_amount: 9, final_amount: 9, created_at: "2026-10-20T11:00:00.000Z", delivery_method: "pickup", delivery_date: "2026-10-30", delivery_time: "16:30", delivery_address: "", comment: "", username: "other", user_name: "Чужой", courier_id: "courier-frost", lines: [] },
 ];
+for (let i = 0; i < 9; i += 1) {
+  orders.push({ id: `ORD-P${i}`, user_id: "999", status: "pending", total_amount: 10, delivery_date: i === 8 ? "2026-10-30" : "2026-10-29", delivery_time: "18:00", user_name: "Клиент", username: "", courier_id: "courier-north", lines: [{ name: "ELFLIQ", variant: "Blue Razz Ice", quantity: 1 }] });
+}
 let tickets = [];
 let delivers = 0;
 const closed = new Set();
@@ -56,20 +59,38 @@ function ctx(url = "", extra = {}) {
       tickets.push(ticket);
       return ticket;
     },
-    courierOrders(user) {
-      if (user.status !== "courier") return [];
-      return orders.filter((order) => order.courier_id === "courier-north").map((order) => ({ id: order.id, status: order.status }));
+    now() {
+      return new Date("2026-10-29T12:00:00+01:00");
+    },
+    courierBoard(user) {
+      if (user.tg_id === "100000004") return [];
+      if (user.status !== "courier" || user.tg_id !== "100000001") return null;
+      return orders
+        .filter((order) => order.courier_id === "courier-north" && ["pending", "assigned", "picked_up"].includes(order.status))
+        .map((order) => ({ ...order, lines: order.lines || [] }));
     },
     courierOrder(user, orderId) {
       if (user.status !== "courier") return null;
       const order = orders.find((item) => item.id === orderId && item.courier_id === "courier-north");
       return order ? { ...order, contact: "" } : null;
     },
-    async deliver(_user, orderId) {
-      if (closed.has(orderId)) return { closed: true };
-      delivers += 1;
+    async collect(user, orderId, received) {
+      if (user.status !== "courier") return { ok: false };
+      const order = orders.find((item) => item.id === orderId && item.courier_id === "courier-north");
+      if (!order) return { ok: false };
+      if (closed.has(orderId) || order.status === "delivered") return { closed: true };
+      const expected = Number(order.total_amount);
+      const amount = received == null ? expected : Number(received);
+      if (!Number.isFinite(amount) || amount < 0 || amount - expected > 0.001) return { invalid: true };
+      order.cash_received = amount;
+      order.cash_delta = Math.round((amount - expected) * 100) / 100;
+      order.status = "delivered";
       closed.add(orderId);
-      return { ok: true };
+      delivers += 1;
+      return { ok: true, expected, received: amount, delta: order.cash_delta };
+    },
+    async deliver(user, orderId) {
+      return this.collect(user, orderId, null);
     },
     async cancel(user, orderId, reason) {
       const order = orders.find((item) => item.id === orderId && item.courier_id === "courier-north");
@@ -159,20 +180,49 @@ const saved = await handleUpdate({ message: { message_id: 7, chat: { id: 111 }, 
 record("support-save", ask.edit.text.includes("одним сообщением") && saved.send.text.includes("SUP-1") && tickets[0].order_id === "ORD-1" && tickets[0].text === "Где заказ?", saved.send.text);
 
 const stranger = await handleUpdate({ callback_query: { id: "cb4", data: "c:od:ORD-1", from: { id: "111", language_code: "ru" }, message: { message_id: 8, chat: { id: 111 } } } }, ctx());
-record("not-courier", stranger.edit.text.includes("не найден") || stranger.edit.text.includes("недоступен"), stranger.edit.text);
+record("not-courier", stranger.edit.text.includes("курьеров") && stranger.edit.rows.length === 0 && !stranger.edit.text.includes("Ледяная"), stranger.edit.text);
 
 const courier = await handleUpdate(start("100000001", "100000001"), ctx());
 record("courier-home", courier.send.text.includes("Панель курьера"), courier.send.text);
 const card = await handleUpdate({ callback_query: { id: "cb5", data: "c:od:ORD-1", from: { id: "100000001", language_code: "ru" }, message: { message_id: 9, chat: { id: "100000001" } } } }, ctx());
 const otherCard = await handleUpdate({ callback_query: { id: "cb6", data: "c:od:ORD-2", from: { id: "100000001", language_code: "ru" }, message: { message_id: 9, chat: { id: "100000001" } } } }, ctx());
-record("courier-own", card.edit.text.includes("ORD-1") && card.edit.text.includes("Ледяная 4") && otherCard.edit.text.includes("не найден"), otherCard.edit.text);
+record("courier-own", card.edit.text.includes("ORD-1") && card.edit.text.includes("Ледяная 4") && card.edit.rows.some((row) => row.some((button) => button.text.includes("Ровная сумма"))) && !card.edit.rows.some((row) => row.some((button) => button.web_app)) && otherCard.edit.text.includes("курьеров") && !otherCard.edit.text.includes("Ледяная") && otherCard.edit.rows.length === 0, card.edit.text.slice(0, 120));
+const panel = courier.send;
+const todayButton = panel.rows.find((row) => row[0]?.callback_data === "c:od:ORD-1");
+const nextPage = panel.rows.find((row) => row.some((button) => button.callback_data === "c:pg:1"));
+record("courier-panel", panel.text.includes("СЕГОДНЯ · 29.10.2026") && panel.text.includes("ЗАВТРА · 30.10.2026") && panel.text.includes("Касса, ожидается") && panel.text.includes("ELFLIQ · Blue Razz Ice × 1") && todayButton && nextPage, panel.text.slice(0, 180));
+const refreshed = await handleUpdate({ callback_query: { id: "cb-refresh", data: "c:home", from: { id: "100000001", language_code: "ru" }, message: { message_id: 9, chat: { id: "100000001" } } } }, ctx());
+record("courier-refresh", refreshed.answer.id === "cb-refresh" && refreshed.edit.text.includes("Панель курьера") && refreshed.edit.rows.at(-1)[0].text === "🏠 Главное меню", refreshed.edit.rows.at(-1)[0].callback_data);
+const pageTwo = await handleUpdate({ callback_query: { id: "cb-page", data: "c:pg:1", from: { id: "100000001", language_code: "ru" }, message: { message_id: 9, chat: { id: "100000001" } } } }, ctx());
+record("courier-page", pageTwo.edit.rows.some((row) => row.some((button) => button.callback_data === "c:pg:0")) && pageTwo.edit.rows.filter((row) => row[0]?.callback_data?.startsWith("c:od:")).length < 8, String(pageTwo.edit.rows.length));
+const emptyCourier = users.get("100000004") || users.set("100000004", { tg_id: "100000004", status: "courier", lang: "ru" });
+void emptyCourier;
+const empty = await handleUpdate({ message: { message_id: 21, chat: { id: "100000004" }, from: { id: "100000004", language_code: "ru" }, text: "/courier" } }, ctx());
+record("courier-empty", empty.send.text.includes("Заказов: 0") && empty.send.text.includes("0,00 €") && !empty.send.rows.some((row) => row[0]?.callback_data?.startsWith("c:od:")), empty.send.text);
+const inactive = await handleUpdate({ message: { message_id: 22, chat: { id: "111" }, from: { id: "111", language_code: "ru" }, text: "/courier" } }, ctx());
+record("courier-inactive", inactive.send.text.includes("активных курьеров") && inactive.send.rows.length === 0 && !inactive.send.text.includes("ORD-1"), inactive.send.text);
+const minus = await handleUpdate({ callback_query: { id: "cb-m2", data: "c:cf:ORD-P0:m2", from: { id: "100000001", language_code: "ru" }, message: { message_id: 23, chat: { id: "100000001" } } } }, ctx());
+const minusGo = await handleUpdate({ callback_query: { id: "cb-m2-go", data: "c:yes:ORD-P0:m2", from: { id: "100000001", language_code: "ru" }, message: { message_id: 23, chat: { id: "100000001" } } } }, ctx());
+const priced = orders.find((item) => item.id === "ORD-P0");
+record("cash-minus", minus.edit.text.includes("8,00 €") && minus.edit.text.includes("не меняется") && minusGo.edit.text.includes("выданным") && priced.total_amount === 10 && priced.cash_received === 8 && priced.cash_delta === -2, `${priced.cash_received}`);
+const againCash = await handleUpdate({ callback_query: { id: "cb-m2-again", data: "c:yes:ORD-P0:m2", from: { id: "100000001", language_code: "ru" }, message: { message_id: 23, chat: { id: "100000001" } } } }, ctx());
+record("cash-again", againCash.edit.text.includes("завершён") && priced.cash_received === 8, againCash.edit.text);
+const ownAsk = await handleUpdate({ callback_query: { id: "cb-own", data: "c:own:ORD-P1", from: { id: "100000001", language_code: "ru" }, message: { message_id: 24, chat: { id: "100000001" } } } }, ctx());
+const ownBad = await handleUpdate({ message: { message_id: 25, chat: { id: "100000001" }, from: { id: "100000001", language_code: "ru" }, text: "-5" } }, ctx());
+const ownTyped = await handleUpdate({ message: { message_id: 26, chat: { id: "100000001" }, from: { id: "100000001", language_code: "ru" }, text: "7,50" } }, ctx());
+const ownGo = await handleUpdate({ callback_query: { id: "cb-own-go", data: "c:yes:ORD-P1:custom", from: { id: "100000001", language_code: "ru" }, message: { message_id: 26, chat: { id: "100000001" } } } }, ctx());
+const customOrder = orders.find((item) => item.id === "ORD-P1");
+record("cash-custom", ownAsk.edit.text.includes("16,50") && ownBad.send.text.includes("16,50") && ownTyped.send.text.includes("7,50 €") && ownGo.edit.text.includes("выданным") && customOrder.total_amount === 10 && customOrder.cash_received === 7.5, `${customOrder.cash_received}`);
+const deliversBefore = delivers;
 const go = await handleUpdate({ callback_query: { id: "cb7", data: "c:go:ORD-1", from: { id: "100000001", language_code: "ru" }, message: { message_id: 9, chat: { id: "100000001" } } } }, ctx());
 const goAgain = await handleUpdate({ callback_query: { id: "cb8", data: "c:go:ORD-1", from: { id: "100000001", language_code: "ru" }, message: { message_id: 9, chat: { id: "100000001" } } } }, ctx());
-record("deliver-once", go.edit.text.includes("выданным") && goAgain.edit.text.includes("завершён") && delivers === 1, `calls ${delivers}`);
+record("deliver-once", go.edit.text.includes("выданным") && goAgain.edit.text.includes("завершён") && delivers === deliversBefore + 1, `calls ${delivers}`);
 
-const why = await handleUpdate({ callback_query: { id: "cb9", data: "c:why:ORD-2", from: { id: "100000001", language_code: "ru" }, message: { message_id: 10, chat: { id: "77" } } } }, ctx());
-const reason = await handleUpdate({ message: { message_id: 11, chat: { id: "77" }, from: { id: "100000001", language_code: "ru" }, text: "не вышел" } }, ctx());
-record("cancel-own-only", why.edit.text.includes("причину") && (reason.send.text.includes("недоступен") || reason.send.text.includes("закрыт")), reason.send.text);
+const whyForeign = await handleUpdate({ callback_query: { id: "cb9", data: "c:why:ORD-2", from: { id: "100000001", language_code: "ru" }, message: { message_id: 10, chat: { id: "77" } } } }, ctx());
+const whyOwn = await handleUpdate({ callback_query: { id: "cb9b", data: "c:why:ORD-P2", from: { id: "100000001", language_code: "ru" }, message: { message_id: 10, chat: { id: "100000001" } } } }, ctx());
+const whyNext = await handleUpdate({ callback_query: { id: "cb9c", data: "c:nx:ORD-P2", from: { id: "100000001", language_code: "ru" }, message: { message_id: 10, chat: { id: "100000001" } } } }, ctx());
+const reason = await handleUpdate({ message: { message_id: 11, chat: { id: "100000001" }, from: { id: "100000001", language_code: "ru" }, text: "не вышел" } }, ctx());
+record("cancel-own-only", whyForeign.edit.text.includes("курьеров") && whyForeign.edit.rows.length === 0 && whyOwn.edit.text.includes("не выдан") && whyNext.edit.text.includes("причину") && reason.send.text.includes("отменён"), reason.send.text);
 
 const adminDenied = await handleUpdate({ message: { message_id: 12, chat: { id: 111 }, from: { id: "111", language_code: "ru" }, text: "/admin" } }, ctx());
 record("admin-denied", adminDenied.send.text.includes("недоступен"), adminDenied.send.text);
@@ -253,7 +303,7 @@ function jpegSize(buffer) {
 const logo = readFileSync(startLogoFile);
 const logoSize = jpegSize(logo);
 record("logo-file", startLogoFile.endsWith(`${path.sep}public${path.sep}elf.jpg`) && logo[0] === 0xff && logo[1] === 0xd8 && logo.at(-2) === 0xff && logo.at(-1) === 0xd9 && logo.length > 20000 && logoSize.width === 640 && logoSize.height === 640, `${logoSize.width}x${logoSize.height} ${logo.length}`);
-record("commands", commands.map((item) => `${item.command}:${item.description}`).join("|") === "start:Главное меню|shop:Открыть магазин|orders:Мои заказы|help:Помощь", commands.map((item) => item.command).join(","));
+record("commands", commands.map((item) => `${item.command}:${item.description}`).join("|") === "start:Главное меню|shop:Открыть магазин|orders:Мои заказы|courier:Панель курьера|help:Помощь", commands.map((item) => item.command).join(","));
 const menu = menuButton("https://elfinmappz.onrender.com");
 record("menu-button", menu?.type === "web_app" && menu.text === "Магазин" && menu.web_app.url === "https://elfinmappz.onrender.com" && menuButton("http://127.0.0.1:5173") === null, menu?.web_app?.url || "");
 

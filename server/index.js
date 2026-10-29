@@ -331,8 +331,18 @@ function courierById(id) {
   return workbook().couriers.find((item) => item.courier_id === id || item.tg_id === id) || null;
 }
 
-function courierForUser(user) {
-  return workbook().couriers.find((item) => item.tg_id === user.tg_id && item.active) || null;
+async function courierForUser(user) {
+  const tg = String(user?.tg_id || "");
+  if (!tg) return null;
+  if (!useLocalCatalog()) {
+    try {
+      const data = await readHamburgSources();
+      return (data.couriers || []).find((item) => String(item.tg_id) === tg && item.active) || null;
+    } catch {
+      /* The saved snapshot remains the fallback when the sheet cannot be read. */
+    }
+  }
+  return workbook().couriers.find((item) => item.tg_id === tg && item.active) || null;
 }
 
 function slots(courier) {
@@ -411,14 +421,18 @@ async function notifyCourier(order, courier = courierById(order.courier_id), req
     orderTrace(requestId, "COURIER_RESOLVED", courier?.courier_id ? "ok" : "missing");
     orderTrace(requestId, "COURIER_TG_ID_PRESENT", presence);
   }
+  const html = (value) => String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const lines = orderItems(order.id).map((item) => `• ${html(item.name)}${item.variant ? ` · ${html(item.variant)}` : ""} × ${html(item.quantity)}`);
   const text = [
-    `Новый заказ ${order.id}`,
-    `Время: ${order.delivery_time || ""}`,
-    `Адрес: ${order.delivery_address || ""}`,
-    `Комментарий: ${order.comment || ""}`,
-    `Сумма: ${order.total_amount}`,
-    ...orderItems(order.id).map((item) => `${item.name} ${item.variant} × ${item.quantity}`),
-  ].join("\n");
+    `📦 <b>Заказ ${html(order.id)}</b>`,
+    `👤 ${html(order.user_name || "Клиент")}`,
+    `📅 ${html(order.delivery_date || "—")}`,
+    `⏰ ${html(order.delivery_time || "—")}`,
+    `📌 ${html(order.delivery_address || "—")}`,
+    lines.join("\n"),
+    `💰 По заказу: ${html(order.total_amount)} €`,
+  ].filter(Boolean).join("\n");
+  const orderKey = /^[A-Za-z0-9_-]{1,40}$/.test(String(order.id || "")) ? String(order.id) : "";
   const notice = enqueueNotice({
     recipient: presence === "present" ? String(courier.tg_id).trim() : "",
     text,
@@ -431,14 +445,16 @@ async function notifyCourier(order, courier = courierById(order.courier_id), req
     const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ chat_id: item.recipient, text: item.text }),
+      body: JSON.stringify({
+        chat_id: item.recipient,
+        text: item.text,
+        parse_mode: "HTML",
+        reply_markup: orderKey ? { inline_keyboard: [[{ text: "Открыть заказ", callback_data: `c:od:${orderKey}` }]] } : undefined,
+      }),
       signal: AbortSignal.timeout(8000),
     });
-    let description = "";
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      description = String(data?.description || "");
-    }
+    const data = await response.json().catch(() => ({}));
+    const description = response.ok ? "" : String(data?.description || "");
     const code = response.ok ? "" : telegramFailureCode(response.status, description);
     notice.http_status = response.status;
     if (requestId) {
@@ -446,7 +462,7 @@ async function notifyCourier(order, courier = courierById(order.courier_id), req
       orderTrace(requestId, "TELEGRAM_ERROR_CODE", response.ok ? "ok" : code);
       orderTrace(requestId, "NOTIFICATION_SENT", response.ok ? "ok" : "fail");
     }
-    return { ok: response.ok, code };
+    return { ok: response.ok, code, messageId: data?.result?.message_id };
   });
   if (requestId && !notice.sent && notice.last_error !== "TELEGRAM_REJECTED" && !notice.http_status) {
     orderTrace(requestId, "NOTIFICATION_ATTEMPTED", "skipped");
@@ -1190,7 +1206,7 @@ app.get("/api/order/history", requireAuth, (req, res) => {
   res.json({ orders });
 });
 
-app.get("/api/courier/orders", requireAuth, (req, res) => {
+app.get("/api/courier/orders", requireAuth, async (req, res) => {
   const city = cityOf(req.query.city || CITY);
   if (!city) return res.status(400).json({ error: "INVALID_CITY" });
   const status = req.user.status;
@@ -1198,7 +1214,7 @@ app.get("/api/courier/orders", requireAuth, (req, res) => {
   let courierId = "";
   if (status === "admin" && req.query.courierId) courierId = String(req.query.courierId);
   else {
-    const courier = courierForUser(req.user);
+    const courier = await courierForUser(req.user);
     if (!courier) return res.status(403).json({ error: "Forbidden" });
     courierId = courier.courier_id;
   }
@@ -1227,7 +1243,7 @@ async function applyCourierStatus(user, orderId, next, reason) {
     error.status = 400;
     throw error;
   }
-  const courier = courierForUser(user);
+  const courier = await courierForUser(user);
   if (user.status === "courier") {
     if (!courier || order.courier_id !== courier.courier_id) {
       const error = new Error("Forbidden");
@@ -1252,7 +1268,16 @@ async function applyCourierStatus(user, orderId, next, reason) {
       returnStock(order, text);
       return { ok: true, status: "cancelled" };
     }
-    if (status === "delivered") order.delivered_at = new Date().toISOString();
+    if (status === "delivered") {
+      if (!order.cash_at) {
+        const expected = Math.round(Number(order.total_amount) * 100) / 100;
+        order.cash_received = expected;
+        order.cash_delta = 0;
+        order.cash_by = String(user.tg_id);
+        order.cash_at = new Date().toISOString();
+      }
+      order.delivered_at = order.cash_at || new Date().toISOString();
+    }
     order.status = status;
     upsertOrderRow({
       order_id: order.id,
@@ -1262,6 +1287,48 @@ async function applyCourierStatus(user, orderId, next, reason) {
       cancel_reason: order.cancel_reason || "",
     });
     return { ok: true, status };
+  });
+}
+
+async function applyCourierCash(user, orderId, received) {
+  const order = db().orders[String(orderId || "")];
+  if (!order) {
+    const error = new Error("Order not found");
+    error.status = 404;
+    throw error;
+  }
+  const courier = await courierForUser(user);
+  if (!courier || order.courier_id !== courier.courier_id) {
+    const error = new Error("Forbidden");
+    error.status = 403;
+    throw error;
+  }
+  const expected = Math.round(Number(order.total_amount) * 100) / 100;
+  const amount = received == null ? expected : Math.round(Number(received) * 100) / 100;
+  if (!Number.isFinite(expected) || !Number.isFinite(amount) || amount < 0 || amount - expected > 0.001) {
+    const error = new Error("Некорректная сумма");
+    error.status = 400;
+    throw error;
+  }
+  return withOrderLock(order.id, () => {
+    const current = normalizeStatus(order.status);
+    if (!["pending", "assigned", "picked_up"].includes(current) || order.cash_at) {
+      const error = new Error("Заказ уже завершён");
+      error.status = 400;
+      throw error;
+    }
+    order.cash_received = amount;
+    order.cash_delta = Math.round((amount - expected) * 100) / 100;
+    order.cash_by = String(user.tg_id);
+    order.cash_at = new Date().toISOString();
+    order.status = "delivered";
+    order.delivered_at = order.cash_at;
+    upsertOrderRow({
+      order_id: order.id,
+      status: "delivered",
+      delivered_at: order.delivered_at,
+    });
+    return { ok: true, status: "delivered", expected, received: amount, delta: order.cash_delta };
   });
 }
 
@@ -1340,6 +1407,12 @@ function botContext() {
       persist();
       return user;
     },
+    async refreshCourier(user) {
+      if (user.status === "admin") return;
+      const courier = await courierForUser(user);
+      if (courier) user.status = "courier";
+      else if (user.status === "courier") user.status = "user";
+    },
     ordersFor(tgId) {
       return ownOrders(tgId);
     },
@@ -1391,36 +1464,48 @@ function botContext() {
       return ticket;
     },
     courierOrders(user, mode) {
-      const courier = courierForUser(user);
-      if (!courier) return [];
-      return Object.values(db().orders)
-        .filter((order) => order.courier_id === courier.courier_id && normalizeStatus(order.status) !== "buffer")
-        .filter((order) => {
-          const status = normalizeStatus(order.status);
-          if (mode === "active") return ["pending", "assigned", "picked_up"].includes(status);
-          if (mode === "done") return status === "delivered" || status === "cancelled";
-          return true;
-        })
-        .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
-        .map((order) => ({ id: order.id, status: normalizeStatus(order.status) }));
+      return this.courierBoard(user, mode);
     },
-    courierOrder(user, orderId) {
+    async courierBoard(user) {
+      const courier = await courierForUser(user);
+      if (!courier) return null;
+      const open = new Set(["pending", "assigned", "picked_up"]);
+      return Object.values(db().orders)
+        .filter((order) => order.courier_id === courier.courier_id && open.has(normalizeStatus(order.status)))
+        .map((order) => ({
+          id: order.id,
+          status: normalizeStatus(order.status),
+          total_amount: Number(order.total_amount),
+          delivery_date: order.delivery_date || "",
+          delivery_time: order.delivery_time || "",
+          delivery_address: order.delivery_address || "",
+          user_name: order.user_name || "",
+          username: order.username || "",
+          payment_method: order.payment_method || "cash",
+          lines: orderItems(order.id).map((item) => ({ name: item.name, variant: item.variant || "", quantity: item.quantity })),
+        }))
+        .sort((a, b) => `${a.delivery_date} ${a.delivery_time}`.localeCompare(`${b.delivery_date} ${b.delivery_time}`));
+    },
+    async courierOrder(user, orderId) {
       const order = db().orders[String(orderId || "")];
-      const courier = courierForUser(user);
+      const courier = await courierForUser(user);
       if (!order || !courier || order.courier_id !== courier.courier_id) return null;
       return {
         ...order,
         status: normalizeStatus(order.status),
         lines: orderItems(order.id),
-        contact: maskPhone(order.user_phone) || "",
+        contact: "",
       };
     },
     async deliver(user, orderId) {
+      return this.collect(user, orderId, null);
+    },
+    async collect(user, orderId, received) {
       try {
-        await applyCourierStatus(user, orderId, "delivered", "");
-        return { ok: true };
+        const result = await applyCourierCash(user, orderId, received);
+        return { ok: true, ...result };
       } catch (error) {
-        return { ok: false, closed: error.status === 400 };
+        return { ok: false, closed: error.message === "Заказ уже завершён", invalid: error.message === "Некорректная сумма" };
       }
     },
     async cancel(user, orderId, reason) {

@@ -85,6 +85,7 @@ async function show(token, action) {
   const screen = action?.edit || action?.send;
   if (!screen) return;
   const payload = { chat_id: screen.chatId, text: screen.text };
+  if (screen.html) payload.parse_mode = "HTML";
   if (action.edit) {
     try {
       await sendText(token, "editMessageText", { ...payload, message_id: action.edit.messageId }, screen.rows || []);

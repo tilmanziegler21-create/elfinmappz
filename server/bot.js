@@ -5,6 +5,7 @@ import { copyKeys, language, t } from "./botCopy.js";
 export const startLogoFile = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../public/elf.jpg");
 
 const PAGE = 5;
+const COURIER_PAGE = 8;
 const hits = new Map();
 const sessions = new Map();
 
@@ -46,7 +47,37 @@ function limited(chatId) {
 function euro(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) return "—";
-  return `${number.toFixed(2).replace(".", ",")} €`;
+  const sign = number < 0 ? "−" : "";
+  return `${sign}${Math.abs(number).toFixed(2).replace(".", ",")} €`;
+}
+
+function esc(value) {
+  return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function safeId(id) {
+  const value = String(id || "");
+  return /^[A-Za-z0-9_-]{1,40}$/.test(value) ? value : "";
+}
+
+function berlinDay(date) {
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Berlin", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date);
+  const pick = (type) => parts.find((item) => item.type === type)?.value || "";
+  return { iso: `${pick("year")}-${pick("month")}-${pick("day")}`, label: `${pick("day")}.${pick("month")}.${pick("year")}` };
+}
+
+function shiftIso(iso, days) {
+  const [year, month, day] = String(iso || "").split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day + Number(days || 0)));
+  const nextMonth = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const nextDay = String(date.getUTCDate()).padStart(2, "0");
+  return `${date.getUTCFullYear()}-${nextMonth}-${nextDay}`;
+}
+
+function parseCash(text) {
+  const raw = String(text || "").trim().replace(/\s/g, "").replace("€", "").replace(",", ".");
+  if (!/^\d+(\.\d{1,2})?$/.test(raw)) return null;
+  return Math.round(Number(raw) * 100) / 100;
 }
 
 function when(value) {
@@ -173,46 +204,140 @@ async function supportHome(user, ctx) {
   return view(`${t(lang, "supportPick")}${manager}`, rows);
 }
 
-function courierHome(user) {
-  const lang = user.lang || "ru";
-  return view(t(lang, "courierTitle"), [
-    [{ text: t(lang, "courierOrders"), callback_data: "c:list:all" }],
-    [{ text: t(lang, "courierActive"), callback_data: "c:list:active" }, { text: t(lang, "courierDone"), callback_data: "c:list:done" }],
-    [{ text: t(lang, "customerHome"), callback_data: "m:home" }],
-  ]);
+function courierDenied() {
+  return { ...view("Доступ только для активных курьеров.", []), html: true };
 }
 
-async function courierList(user, ctx, mode) {
-  const lang = user.lang || "ru";
-  if (user.status !== "courier" && user.status !== "admin") return view(t(lang, "denied"), [[{ text: t(lang, "back"), callback_data: "m:home" }]]);
-  const orders = await ctx.courierOrders(user, mode);
-  if (!orders.length) return view(t(lang, "none"), [[{ text: t(lang, "back"), callback_data: "c:home" }]]);
-  const rows = orders.slice(0, PAGE).map((order) => [{ text: order.id, callback_data: `c:od:${order.id}` }]);
-  rows.push([{ text: t(lang, "back"), callback_data: "c:home" }]);
-  return view(t(lang, "courierTitle"), rows);
+function courierNow(ctx) {
+  const value = typeof ctx.now === "function" ? ctx.now() : new Date();
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? new Date() : date;
 }
 
-async function courierCard(user, ctx, orderId) {
-  const lang = user.lang || "ru";
-  const order = await ctx.courierOrder(user, orderId);
-  if (!order) return view(t(lang, "missing"), [[{ text: t(lang, "back"), callback_data: "c:home" }]]);
-  const text = [
-    `📦 ${order.id}`,
-    when(order.delivery_time ? `${order.delivery_date} ${order.delivery_time}` : order.created_at),
-    order.delivery_method || "—",
-    order.delivery_address || "—",
-    euro(order.final_amount ?? order.total_amount),
-    ...(order.lines || []).map((item) => `${item.name} × ${item.quantity}`),
-    order.username ? `@${order.username}` : "—",
-    order.contact || "—",
-    order.comment || "—",
-  ].join("\n");
+function lineText(item) {
+  const name = esc(item?.name || "Товар");
+  const variant = item?.variant ? ` · ${esc(item.variant)}` : "";
+  return `${name}${variant} × ${esc(item?.quantity ?? 1)}`;
+}
+
+function orderAmount(order) {
+  const amount = Number(order?.total_amount);
+  return Number.isFinite(amount) ? amount : 0;
+}
+
+async function loadBoard(user, ctx) {
+  if (typeof ctx.courierBoard !== "function") return null;
+  const board = await ctx.courierBoard(user);
+  return Array.isArray(board) ? board : null;
+}
+
+function dayLabel(iso) {
+  const [year, month, day] = String(iso || "").split("-");
+  if (!year || !month || !day) return "—";
+  return `${day}.${month}.${year}`;
+}
+
+function panelText(orders, today) {
+  const tomorrow = shiftIso(today.iso, 1);
+  const groups = [
+    { title: "СЕГОДНЯ", day: today, list: orders.filter((order) => order.delivery_date === today.iso) },
+    { title: "ЗАВТРА", day: { iso: tomorrow, label: dayLabel(tomorrow) }, list: orders.filter((order) => order.delivery_date === tomorrow) },
+  ];
+  const lines = ["🚚 <b>ELFIN MARKET — Панель курьера</b>", ""];
+  for (const group of groups) {
+    const cash = group.list.reduce((sum, order) => sum + orderAmount(order), 0);
+    lines.push(`📅 <b>${group.title} · ${group.day.label}</b>`);
+    lines.push(`📦 Заказов: ${group.list.length}`);
+    lines.push(`💰 Касса, ожидается: ${euro(cash)}`);
+    if (!group.list.length) lines.push("Открытых заказов нет.");
+    for (const order of group.list) {
+      const id = safeId(order.id) || "—";
+      lines.push("", `• ${esc(id)} · ${esc(order.user_name || "Клиент")} · ${esc(order.delivery_time || "—")} · ${euro(orderAmount(order))}`);
+      const products = (order.lines || []).slice(0, 4).map(lineText);
+      if (products.length) lines.push(products.join(", "));
+    }
+    lines.push("");
+  }
+  const other = orders.filter((order) => order.delivery_date !== today.iso && order.delivery_date !== tomorrow);
+  if (other.length) {
+    lines.push(`📅 <b>ДРУГИЕ ДНИ</b>`, `📦 Заказов: ${other.length}`, "Эти заказы не входят в кассу сегодня и завтра.", "");
+  }
+  lines.push("Касса — ожидаемая сумма открытых заказов этого дня. Выданные и отменённые сюда не входят.");
+  return lines.join("\n").trim().slice(0, 3900);
+}
+
+function panelRows(orders, today, page) {
+  const tomorrow = shiftIso(today.iso, 1);
+  const start = Math.max(0, page) * COURIER_PAGE;
+  const slice = orders.slice(start, start + COURIER_PAGE);
+  const rows = [];
+  for (const order of slice) {
+    const id = safeId(order.id);
+    if (!id) continue;
+    const whenWord = order.delivery_date === today.iso ? "сегодня" : order.delivery_date === tomorrow ? "завтра" : esc(order.delivery_date || "день");
+    const label = `📦 ${id} · ${String(order.user_name || "Клиент").slice(0, 18)} · ${order.delivery_time || "—"} · ${whenWord}`;
+    rows.push([{ text: label.slice(0, 64), callback_data: `c:od:${id}` }]);
+  }
+  const nav = [];
+  if (start > 0) nav.push({ text: "←", callback_data: `c:pg:${page - 1}` });
+  if (start + COURIER_PAGE < orders.length) nav.push({ text: "→", callback_data: `c:pg:${page + 1}` });
+  if (nav.length) rows.push(nav);
+  rows.push([{ text: "🔄 Обновить", callback_data: "c:home" }]);
+  rows.push([{ text: "🏠 Главное меню", callback_data: "c:home" }]);
+  return rows;
+}
+
+async function courierHome(user, ctx, page = 0) {
+  const orders = await loadBoard(user, ctx);
+  if (!orders) return courierDenied();
+  const today = berlinDay(courierNow(ctx));
+  return { ...view(panelText(orders, today), panelRows(orders, today, page)), html: true };
+}
+
+function expectedAmount(order, mode, custom) {
+  const expected = orderAmount(order);
+  if (mode === "m2") return Math.round((expected - 2) * 100) / 100;
+  if (mode === "m3") return Math.round((expected - 3) * 100) / 100;
+  if (mode === "custom") return custom;
+  return expected;
+}
+
+async function courierCard(user, ctx, orderId, note = "") {
+  const id = safeId(orderId);
+  const order = id ? await ctx.courierOrder(user, id) : null;
+  if (!order) return courierDenied();
   const open = ["pending", "assigned", "picked_up"].includes(order.status);
-  const rows = open
-    ? [[{ text: t(lang, "delivered"), callback_data: `c:ask:${order.id}` }, { text: t(lang, "notDelivered"), callback_data: `c:why:${order.id}` }]]
-    : [];
-  rows.push([{ text: t(lang, "back"), callback_data: "c:list:all" }]);
-  return view(text, rows);
+  const lines = [
+    `📦 <b>Заказ ${esc(order.id)}</b>`,
+    "",
+    `👤 ${esc(order.user_name || "Клиент")}`,
+    `📅 ${esc(order.delivery_date || "—")}`,
+    `⏰ ${esc(order.delivery_time || "—")}`,
+    `📌 ${esc(statusName("ru", order.status))}`,
+    `💳 ${order.payment_method === "card" ? "Карта" : "Наличные"}`,
+    `📍 ${esc(order.delivery_address || "—")}`,
+    "",
+    ...(order.lines || []).map((item) => `• ${lineText(item)}`),
+    "",
+    `💰 По заказу: ${euro(orderAmount(order))}`,
+  ];
+  if (order.cash_at) {
+    lines.push(`💰 Получено: ${euro(order.cash_received)}`, `Разница: ${euro(order.cash_delta)}`, "Исходная сумма заказа не изменена.");
+  }
+  if (note) lines.push("", esc(note));
+  else if (open) lines.push("", "Подтвердите фактическую выдачу:");
+  const rows = [];
+  if (open && id) {
+    rows.push([{ text: "✅ Ровная сумма", callback_data: `c:cf:${id}:full` }]);
+    rows.push([{ text: "−2€", callback_data: `c:cf:${id}:m2` }, { text: "−3€", callback_data: `c:cf:${id}:m3` }]);
+    rows.push([{ text: "✏️ Своя сумма", callback_data: `c:own:${id}` }]);
+    rows.push([{ text: "❌ Не выдано", callback_data: `c:why:${id}` }]);
+  }
+  if (/^[A-Za-z0-9_]{5,32}$/.test(String(order.username || ""))) {
+    rows.push([{ text: "💬 Написать клиенту", url: `https://t.me/${order.username}` }]);
+  }
+  rows.push([{ text: "⬅️ Назад в панель", callback_data: "c:home" }]);
+  return { ...view(lines.join("\n"), rows), html: true };
 }
 
 function adminHome(user) {
@@ -226,9 +351,54 @@ function adminHome(user) {
   ]);
 }
 
+async function courierRoute(user, ctx, state, action, extra, arg) {
+  const id = safeId(extra);
+  if (action === "home" || action === "list" || action === "pg") return courierHome(user, ctx, action === "pg" ? Number(extra || 0) : 0);
+  if (!id) return courierDenied();
+  const order = await ctx.courierOrder(user, id);
+  if (!order) return courierDenied();
+  if (action === "od") return courierCard(user, ctx, id);
+  if (action === "own") {
+    state.pending = { type: "cash", orderId: id };
+    return { ...view(`✏️ Своя сумма\n${id}\n\nНапишите полученную сумму, например 16,50.\nИсходная сумма заказа не изменится.\nОтмена — напишите «нет».`, [[{ text: "⬅️ Назад в панель", callback_data: "c:home" }]]), html: true };
+  }
+  if (action === "cf" || action === "ask") {
+    const mode = action === "ask" ? "full" : (arg || "full");
+    const received = expectedAmount(order, mode);
+    if (!Number.isFinite(received) || received < 0) return courierCard(user, ctx, id, "Эта сумма меньше нуля. Выберите другую.");
+    return { ...view(`Подтвердите выдачу ${esc(id)}\nПо заказу: ${euro(orderAmount(order))}\nК получению: ${euro(received)}\nРазница: ${euro(received - orderAmount(order))}\nИсходная сумма заказа не меняется.`, [
+      [{ text: "✅ Подтвердить", callback_data: `c:yes:${id}:${mode}` }],
+      [{ text: "⬅️ Назад", callback_data: `c:od:${id}` }],
+    ]), html: true };
+  }
+  if (action === "yes" || action === "go") {
+    const mode = action === "go" ? "full" : (arg || "full");
+    const custom = mode === "custom" && state.pending?.orderId === id ? state.pending.amount : null;
+    if (mode === "custom" && custom == null) return courierCard(user, ctx, id, "Сначала напишите сумму.");
+    const received = mode === "custom" ? custom : expectedAmount(order, mode);
+    const result = await ctx.collect(user, id, mode === "full" || action === "go" ? null : received);
+    state.pending = null;
+    if (result?.invalid) return courierCard(user, ctx, id, "Некорректная сумма.");
+    if (result?.ok) return courierCard(user, ctx, id, "Заказ отмечен выданным.");
+    return { ...view(t(user.lang || "ru", result?.closed ? "already" : "denied"), [[{ text: "⬅️ Назад в панель", callback_data: "c:home" }]]), html: true };
+  }
+  if (action === "why") {
+    return { ...view(`Подтвердить, что заказ ${esc(id)} не выдан?`, [
+      [{ text: "Да, указать причину", callback_data: `c:nx:${id}` }],
+      [{ text: "⬅️ Назад", callback_data: `c:od:${id}` }],
+    ]), html: true };
+  }
+  if (action === "nx") {
+    state.pending = { type: "cancel", orderId: id };
+    return { ...view(t(user.lang || "ru", "askReason"), [[{ text: "⬅️ Назад", callback_data: `c:od:${id}` }]]), html: true };
+  }
+  return courierHome(user, ctx, 0);
+}
+
 async function route(user, data, ctx, state) {
   const lang = user.lang || "ru";
-  const [scope, action, extra] = String(data || "").split(":");
+  const parts = String(data || "").split(":");
+  const [scope, action, extra] = parts;
   if (scope === "m" && action === "home") return customerHome(user, ctx);
   if (scope === "m" && action === "nourl") return view(t(lang, "noUrl"), [[{ text: t(lang, "back"), callback_data: "m:home" }]]);
   if (scope === "m" && action === "orders") return ordersPage(user, ctx, Number(extra || 0));
@@ -240,27 +410,7 @@ async function route(user, data, ctx, state) {
     state.pending = { type: "support", orderId: extra === "none" ? "" : extra };
     return view(t(lang, "supportAsk"), [[{ text: t(lang, "back"), callback_data: "m:support" }]]);
   }
-  if (scope === "c" && action === "home") {
-    if (user.status !== "courier" && user.status !== "admin") return view(t(lang, "denied"), [[{ text: t(lang, "back"), callback_data: "m:home" }]]);
-    return courierHome(user);
-  }
-  if (scope === "c" && action === "list") return courierList(user, ctx, extra || "all");
-  if (scope === "c" && action === "od") return courierCard(user, ctx, extra);
-  if (scope === "c" && action === "ask") {
-    return view(`${t(lang, "confirmDeliver")}\n${extra}`, [
-      [{ text: t(lang, "yes"), callback_data: `c:go:${extra}` }],
-      [{ text: t(lang, "back"), callback_data: `c:od:${extra}` }],
-    ]);
-  }
-  if (scope === "c" && action === "go") {
-    const result = await ctx.deliver(user, extra);
-    const text = result?.ok ? t(lang, "doneDeliver") : t(lang, result?.closed ? "already" : "denied");
-    return view(text, [[{ text: t(lang, "back"), callback_data: "c:home" }]]);
-  }
-  if (scope === "c" && action === "why") {
-    state.pending = { type: "cancel", orderId: extra };
-    return view(t(lang, "askReason"), [[{ text: t(lang, "back"), callback_data: `c:od:${extra}` }]]);
-  }
+  if (scope === "c") return courierRoute(user, ctx, state, action, extra, parts[3] || "");
   if (scope === "a") {
     if (user.status !== "admin") return view(t(lang, "denied"), [[{ text: t(lang, "back"), callback_data: "m:home" }]]);
     if (action === "home") return adminHome(user);
@@ -275,7 +425,7 @@ async function route(user, data, ctx, state) {
 
 function commandOf(text) {
   const word = String(text || "").trim().split(/\s+/)[0].split("@")[0].toLowerCase();
-  if (word === "/start" || word === "/shop" || word === "/orders" || word === "/profile" || word === "/help" || word === "/admin") return word;
+  if (word === "/start" || word === "/shop" || word === "/orders" || word === "/profile" || word === "/help" || word === "/admin" || word === "/courier") return word;
   return "";
 }
 
@@ -291,6 +441,7 @@ export async function handleUpdate(update, ctx) {
     try {
       const user = ctx.ensureUser(from);
       user.lang = user.lang || lang;
+      if (ctx.refreshCourier) await ctx.refreshCourier(user);
       const state = session(chatId);
       const screen = await route(user, callback.data, ctx, state);
       const messageId = callback.message?.message_id;
@@ -310,6 +461,7 @@ export async function handleUpdate(update, ctx) {
   if (limited(chatId)) return { send: { chatId, text: t(lang, "rate"), rows: [] } };
   const user = ctx.ensureUser(message.from);
   user.lang = user.lang || lang;
+  if (ctx.refreshCourier) await ctx.refreshCourier(user);
   const state = session(chatId);
   const command = commandOf(message.text);
   if (command) state.pending = null;
@@ -324,7 +476,7 @@ export async function handleUpdate(update, ctx) {
       },
     };
   }
-  if (command === "/start") screen = courierHome(user);
+  if (command === "/start" || command === "/courier") screen = await courierHome(user, ctx, 0);
   else if (command === "/shop") {
     const url = httpsUrl(ctx.miniAppUrl);
     screen = url ? view(t(user.lang, "shopLead"), [[openShopButton(user.lang, url)]]) : view(t(user.lang, "noUrl"), [[openShopButton(user.lang, "")]]);
@@ -340,6 +492,26 @@ export async function handleUpdate(update, ctx) {
       const ticket = await ctx.saveTicket(user, state.pending.orderId, text);
       state.pending = null;
       screen = view(`${t(user.lang, "supportDone")}\n${ticket.id}`, [[{ text: t(user.lang, "back"), callback_data: "m:home" }]]);
+    }
+  } else if (state.pending?.type === "cash") {
+    const typed = String(message.text || "").trim().toLowerCase();
+    const orderId = state.pending.orderId;
+    if (typed === "нет" || typed === "отмена") {
+      state.pending = null;
+      screen = await courierCard(user, ctx, orderId, "Ввод суммы отменён.");
+    } else {
+      const amount = parseCash(message.text);
+      const order = await ctx.courierOrder(user, orderId);
+      const expected = order ? orderAmount(order) : NaN;
+      if (amount == null || !order) screen = await courierCard(user, ctx, orderId, amount == null ? "Нужна сумма в евро, например 16,50." : "Заказ недоступен.");
+      else if (amount - expected > 0.001) screen = { ...view(`Сумма не больше ${euro(expected)}. Напишите ещё раз или «нет».`, [[{ text: "⬅️ Назад", callback_data: `c:od:${orderId}` }]]), html: true };
+      else {
+        state.pending = { type: "cash", orderId, amount };
+        screen = { ...view(`Подтвердите выдачу ${esc(orderId)}\nПо заказу: ${euro(expected)}\nК получению: ${euro(amount)}\nРазница: ${euro(amount - expected)}\nИсходная сумма заказа не меняется.`, [
+          [{ text: "✅ Подтвердить", callback_data: `c:yes:${orderId}:custom` }],
+          [{ text: "Отмена", callback_data: `c:od:${orderId}` }],
+        ]), html: true };
+      }
     }
   } else if (state.pending?.type === "cancel") {
     const reason = String(message.text || "").trim();
@@ -375,6 +547,7 @@ export const commands = [
   { command: "start", description: "Главное меню" },
   { command: "shop", description: "Открыть магазин" },
   { command: "orders", description: "Мои заказы" },
+  { command: "courier", description: "Панель курьера" },
   { command: "help", description: "Помощь" },
 ];
 
