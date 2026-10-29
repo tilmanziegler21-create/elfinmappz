@@ -14,7 +14,10 @@ import {
   expireReservations,
   hydrateStore,
   persist,
+  ensureRuntimeState,
+  fieldKind,
   releaseReservations,
+  reservationCleanup,
   upsertOrderRow,
   whenPersisted,
   withOrderLock,
@@ -579,6 +582,16 @@ function storageMode() {
   return "ephemeral";
 }
 
+function acceptState(res) {
+  try {
+    ensureRuntimeState();
+    return true;
+  } catch (error) {
+    res.status(500).json({ error: error.code || "STATE_MIGRATION_STOPPED" });
+    return false;
+  }
+}
+
 function refuseEphemeralOrders(req, res, next) {
   if (process.env.NODE_ENV === "production" && storageMode() !== "persistent") {
     res.status(503).json({ error: "ORDERS_NEED_DATABASE" });
@@ -595,6 +608,10 @@ app.get("/api/ready", async (_req, res) => {
     sheets: await sheetsReady(),
     database: storageMode(),
     stateSchema: Number(db().schemaVersion || 0),
+    reservations: fieldKind("reservations"),
+    orders: fieldKind("orders"),
+    orderIdempotency: fieldKind("orderIdempotency"),
+    reservationCleanup: reservationCleanup(),
     writes: false,
   });
 });
@@ -706,6 +723,7 @@ app.post("/api/order/create", refuseEphemeralOrders, requireAuth, async (req, re
   const city = cityOf(req.body?.city);
   const items = req.body?.items;
   if (!city || !Array.isArray(items) || items.length === 0) return res.status(400).json({ error: "Invalid order data" });
+  if (!acceptState(res)) return;
   const headerKey = String(req.headers["idempotency-key"] || "").trim();
   const key = headerKey ? `${req.user.tg_id}:${headerKey}` : "";
   if (key) {
@@ -940,6 +958,7 @@ app.post("/api/order/payment", refuseEphemeralOrders, requireAuth, (req, res) =>
 app.get("/api/order/history", requireAuth, (req, res) => {
   const city = cityOf(req.query.city || CITY);
   if (!city) return res.status(400).json({ error: "INVALID_CITY" });
+  if (!acceptState(res)) return;
   const orders = Object.values(db().orders)
     .filter((order) => order.user_id === req.user.tg_id && order.city === city)
     .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
@@ -1326,13 +1345,13 @@ async function boot() {
   try {
     expireReservations();
   } catch (error) {
-    console.error("Reservation cleanup error:", error?.message || "error");
+    console.error(`Reservation cleanup error: reservations=${fieldKind("reservations")} ${error?.code || error?.message || "error"}`);
   }
   reservationTimer = setInterval(() => {
     try {
       expireReservations();
     } catch (error) {
-      console.error("Reservation cleanup error:", error?.message || "error");
+      console.error(`Reservation cleanup error: reservations=${fieldKind("reservations")} ${error?.code || error?.message || "error"}`);
     }
   }, 60 * 1000);
   reservationTimer.unref?.();

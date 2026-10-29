@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { hydrateFromPostgres, queueSnapshot, whenPersisted as waitForPostgres } from "./pgState.js";
-import { describeState, expireReservationRecords, mergeSnapshots, normalizeSnapshot } from "./stateShape.js";
+import { describeState, expireReservationRecords, mergeSnapshots, normalizeSnapshot, valueKind } from "./stateShape.js";
 
 const dataDir = process.env.DATA_DIR || path.join(process.cwd(), "data");
 const stateFile = path.join(dataDir, "state.json");
@@ -234,18 +234,46 @@ export function withOrderLock(orderId, fn) {
   return tracked;
 }
 
-export function expireReservations() {
-  const cancelled = expireReservationRecords(state.reservations, state.orders, Date.now());
-  for (const orderId of cancelled) {
-    const order = state.orders[orderId];
-    upsertOrderRow({
-      order_id: orderId,
-      status: "cancelled",
-      cancelled_at: order.cancelled_at,
-      cancel_reason: order.cancel_reason,
+let cleanupStatus = "pending";
+
+export function reservationCleanup() {
+  return cleanupStatus;
+}
+
+export function fieldKind(name) {
+  return valueKind(state[name]);
+}
+
+export function ensureRuntimeState() {
+  const report = normalizeSnapshot(state, sheet);
+  if (report.filled.length || report.converted.length) {
+    console.log(`State migration: filled=${report.filled.join(",") || "-"} converted=${report.converted.join(",") || "-"}`);
+    persist().catch((error) => {
+      console.error("State migration persist failed:", error?.code || error?.message || "error");
     });
   }
-  return cancelled;
+  return report;
+}
+
+export function expireReservations() {
+  try {
+    ensureRuntimeState();
+    const cancelled = expireReservationRecords(state.reservations, state.orders, Date.now());
+    for (const orderId of cancelled) {
+      const order = state.orders[orderId];
+      upsertOrderRow({
+        order_id: orderId,
+        status: "cancelled",
+        cancelled_at: order.cancelled_at,
+        cancel_reason: order.cancel_reason,
+      });
+    }
+    cleanupStatus = "ok";
+    return cancelled;
+  } catch (error) {
+    cleanupStatus = "error";
+    throw error;
+  }
 }
 
 persist();

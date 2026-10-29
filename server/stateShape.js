@@ -14,6 +14,13 @@ function isRecord(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+export function valueKind(value) {
+  if (value == null) return "missing";
+  if (Array.isArray(value)) return "array";
+  if (typeof value === "object") return "object";
+  return typeof value;
+}
+
 function kind(value) {
   if (value == null) return "missing";
   if (Array.isArray(value)) return `array:${value.length}`;

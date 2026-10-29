@@ -348,6 +348,8 @@ async function runIntegration() {
     const ready = await waitReady(port, child);
     const log = child.readLog();
     assert(ready.database === "persistent" && ready.stateSchema === 1, "ready schema");
+    assert(ready.reservations === "array" && ready.orders === "object" && ready.orderIdempotency === "object", "ready field types");
+    assert(ready.reservationCleanup === "ok", "cleanup did not throw");
     assert(!log.includes("not iterable") && !log.includes("Cannot read properties of undefined"), "boot has no order TypeError");
     assert(log.includes("State migration:"), "migration logged");
     const saved = await mainShape(client);
