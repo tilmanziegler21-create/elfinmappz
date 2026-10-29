@@ -53,7 +53,11 @@ const copy = {
     adminTickets: "💬 Обращения",
     fail: "Не вышло. Повторите.",
     none: "Пусто.",
-    help: "Команды: /start /shop /orders /profile /help",
+    help: "Команды: /start /shop /orders /help",
+    welcomeCaption: "<b>❄️ ELFIN MARKET</b>\n\nДобро пожаловать!\n\nВаш магазин в Telegram.\nКаталог, корзина и история заказов —\nв одном удобном приложении.\n\nНажмите кнопку ниже,\nчтобы открыть магазин.",
+    openShop: "❄️ Открыть магазин",
+    shopLead: "Нажмите кнопку ниже, чтобы открыть магазин.",
+    ordersUnavailable: "История заказов пока недоступна.\n\nБаза заказов не подключена, поэтому список не показывается.",
   },
   de: {
     welcome: "❄️ ELFIN MARKET\nHamburg · HH\n\nWillkommen!\n\nÖffne die App für Katalog, Bestellungen und Profil.\n\nWähle einen Bereich.",
@@ -109,7 +113,11 @@ const copy = {
     adminTickets: "💬 Anfragen",
     fail: "Fehler. Bitte erneut.",
     none: "Leer.",
-    help: "Befehle: /start /shop /orders /profile /help",
+    help: "Befehle: /start /shop /orders /help",
+    welcomeCaption: "<b>❄️ ELFIN MARKET</b>\n\nWillkommen!\n\nDein Shop in Telegram.\nKatalog, Warenkorb und Bestellungen —\nin einer App.\n\nTippe auf die Schaltfläche unten,\num den Shop zu öffnen.",
+    openShop: "❄️ Shop öffnen",
+    shopLead: "Tippe auf die Schaltfläche unten, um den Shop zu öffnen.",
+    ordersUnavailable: "Die Bestellhistorie ist noch nicht verfügbar.\n\nDie Datenbank ist nicht verbunden, daher wird keine Liste gezeigt.",
   },
   en: {
     welcome: "❄️ ELFIN MARKET\nHamburg · HH\n\nWelcome!\n\nOpen the app for the catalog, your orders and profile.\n\nChoose a section.",
@@ -165,7 +173,11 @@ const copy = {
     adminTickets: "💬 Requests",
     fail: "Something failed. Try again.",
     none: "Empty.",
-    help: "Commands: /start /shop /orders /profile /help",
+    help: "Commands: /start /shop /orders /help",
+    welcomeCaption: "<b>❄️ ELFIN MARKET</b>\n\nWelcome!\n\nYour shop in Telegram.\nCatalog, cart and order history —\nin one app.\n\nTap the button below\nto open the shop.",
+    openShop: "❄️ Open shop",
+    shopLead: "Tap the button below to open the shop.",
+    ordersUnavailable: "Order history is not available yet.\n\nThe database is not connected, so no list is shown.",
   },
 };
 

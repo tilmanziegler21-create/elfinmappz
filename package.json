@@ -20,7 +20,12 @@
     "check:sheets": "node server/check-sheets.mjs",
     "check:miniapp": "node server/check-miniapp.mjs",
     "setup:hh-tabs": "node server/setup-hh-tabs.mjs",
-    "setup:test-sheet": "node server/setup-test-sheet.mjs"
+    "setup:test-sheet": "node server/setup-test-sheet.mjs",
+    "test:roles": "node tests/role-safety.mjs",
+    "test:telegram": "node tests/telegram-auth.mjs",
+    "test:ui": "playwright test",
+    "test:ui:headed": "playwright test --headed",
+    "test:ui:report": "playwright show-report"
   },
   "dependencies": {
     "express": "^5.3.0",
@@ -35,6 +40,7 @@
     "body-parser": "2.4.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",

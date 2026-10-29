@@ -2,8 +2,11 @@ export type SessionUser = {
   tgId: string;
   username: string;
   firstName: string;
+  lastName?: string;
   status: string;
 };
+
+export type AuthPhase = "initializing" | "authenticated" | "unauthenticated" | "expired" | "error";
 
 export type Session = {
   token: string;
@@ -65,15 +68,20 @@ function apiUrl(path: string) {
 }
 
 export async function api<T>(path: string, options: { method?: string; body?: unknown; token?: string; headers?: Record<string, string> } = {}) {
-  const response = await fetch(apiUrl(path), {
-    method: options.method || "GET",
-    headers: {
-      "content-type": "application/json",
-      ...(options.token ? { authorization: `Bearer ${options.token}` } : {}),
-      ...options.headers,
-    },
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
-  });
+  let response: Response;
+  try {
+    response = await fetch(apiUrl(path), {
+      method: options.method || "GET",
+      headers: {
+        "content-type": "application/json",
+        ...(options.token ? { authorization: `Bearer ${options.token}` } : {}),
+        ...options.headers,
+      },
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    });
+  } catch {
+    throw new Error("Сервер не ответил.");
+  }
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Ошибка запроса");
   return data as T;

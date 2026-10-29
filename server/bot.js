@@ -1,4 +1,8 @@
+import path from "path";
+import { fileURLToPath } from "url";
 import { copyKeys, language, t } from "./botCopy.js";
+
+export const startLogoFile = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../public/elf.jpg");
 
 const PAGE = 5;
 const hits = new Map();
@@ -59,6 +63,11 @@ function shopButton(lang, url) {
   return { text: t(lang, "shop"), web_app: { url } };
 }
 
+function openShopButton(lang, url) {
+  if (!url) return { text: t(lang, "openShop"), callback_data: "m:nourl" };
+  return { text: t(lang, "openShop"), style: "primary", web_app: { url } };
+}
+
 function customerKeyboard(lang, url, user) {
   const rows = [
     [shopButton(lang, url)],
@@ -85,6 +94,9 @@ async function customerHome(user, ctx) {
 
 async function ordersPage(user, ctx, page) {
   const lang = user.lang || "ru";
+  if (ctx.ordersReady === false) {
+    return view(t(lang, "ordersUnavailable"), [[shopButton(lang, httpsUrl(ctx.miniAppUrl))], [{ text: t(lang, "back"), callback_data: "m:home" }]]);
+  }
   const orders = await ctx.ordersFor(user.tg_id);
   if (!orders.length) {
     return view(t(lang, "emptyOrders"), [[shopButton(lang, httpsUrl(ctx.miniAppUrl))], [{ text: t(lang, "back"), callback_data: "m:home" }]]);
@@ -125,19 +137,25 @@ async function orderDetail(user, ctx, orderId) {
 
 async function profileView(user, ctx) {
   const lang = user.lang || "ru";
-  const profile = await ctx.profile(user);
   const name = user.first_name || "—";
   const username = user.username ? `@${user.username}` : "—";
-  const text = [
+  const lines = [
     t(lang, "profileTitle"),
     "",
     `${t(lang, "profileName")}: ${name}`,
     `${t(lang, "profileUser")}: ${username}`,
     `${t(lang, "profileCity")}: Hamburg`,
-    `${t(lang, "profileDone")}: ${profile.delivered}`,
-    `${t(lang, "profileLast")}: ${when(profile.last)}`,
-    `${t(lang, "profileLevel")}: ${profile.level} / 10`,
-  ].join("\n");
+  ];
+  if (ctx.ordersReady === false) lines.push("", t(lang, "ordersUnavailable"));
+  else {
+    const profile = await ctx.profile(user);
+    lines.push(
+      `${t(lang, "profileDone")}: ${profile.delivered}`,
+      `${t(lang, "profileLast")}: ${when(profile.last)}`,
+      `${t(lang, "profileLevel")}: ${profile.level} / 10`,
+    );
+  }
+  const text = lines.join("\n");
   return view(text, [
     [{ text: t(lang, "orders"), callback_data: "m:orders:0" }],
     [shopButton(lang, httpsUrl(ctx.miniAppUrl))],
@@ -147,7 +165,7 @@ async function profileView(user, ctx) {
 
 async function supportHome(user, ctx) {
   const lang = user.lang || "ru";
-  const orders = (await ctx.ordersFor(user.tg_id)).slice(0, 5);
+  const orders = ctx.ordersReady === false ? [] : (await ctx.ordersFor(user.tg_id)).slice(0, 5);
   const rows = orders.map((order) => [{ text: order.id, callback_data: `m:sup:${order.id}` }]);
   rows.push([{ text: t(lang, "supportFree"), callback_data: "m:sup:none" }]);
   rows.push([{ text: t(lang, "back"), callback_data: "m:home" }]);
@@ -296,8 +314,21 @@ export async function handleUpdate(update, ctx) {
   const command = commandOf(message.text);
   if (command) state.pending = null;
   let screen;
-  if (command === "/start") screen = user.status === "courier" ? courierHome(user) : await customerHome(user, ctx);
-  else if (command === "/shop") screen = httpsUrl(ctx.miniAppUrl) ? await customerHome(user, ctx) : view(t(user.lang, "noUrl"), customerKeyboard(user.lang, "", actor(user)));
+  if (command === "/start" && user.status !== "courier") {
+    const url = httpsUrl(ctx.miniAppUrl);
+    return {
+      photo: {
+        chatId,
+        caption: t(user.lang, "welcomeCaption"),
+        rows: [[openShopButton(user.lang, url)]],
+      },
+    };
+  }
+  if (command === "/start") screen = courierHome(user);
+  else if (command === "/shop") {
+    const url = httpsUrl(ctx.miniAppUrl);
+    screen = url ? view(t(user.lang, "shopLead"), [[openShopButton(user.lang, url)]]) : view(t(user.lang, "noUrl"), [[openShopButton(user.lang, "")]]);
+  }
   else if (command === "/orders") screen = await ordersPage(user, ctx, 0);
   else if (command === "/profile") screen = await profileView(user, ctx);
   else if (command === "/help") screen = view(`${t(user.lang, "help")}\n\n${t(user.lang, "infoBody")}`, [[{ text: t(user.lang, "support"), callback_data: "m:support" }], [{ text: t(user.lang, "back"), callback_data: "m:home" }]]);
@@ -323,18 +354,48 @@ export async function handleUpdate(update, ctx) {
   return { send: { chatId, ...screen } };
 }
 
-export function markup(rows) {
-  return { inline_keyboard: rows };
+export function markup(rows, styled = true) {
+  return {
+    inline_keyboard: (rows || []).map((row) => row.map((button) => {
+      if (styled || !button.style) return button;
+      const next = { ...button };
+      delete next.style;
+      return next;
+    })),
+  };
+}
+
+export function menuButton(url) {
+  const href = httpsUrl(url);
+  if (!href) return null;
+  return { type: "web_app", text: "Магазин", web_app: { url: href } };
 }
 
 export const commands = [
-  { command: "start", description: "Меню" },
-  { command: "shop", description: "Mini App" },
+  { command: "start", description: "Главное меню" },
+  { command: "shop", description: "Открыть магазин" },
   { command: "orders", description: "Мои заказы" },
-  { command: "profile", description: "Профиль" },
-  { command: "help", description: "Информация" },
+  { command: "help", description: "Помощь" },
 ];
 
 export function sameCopyKeys() {
   return copyKeys;
+}
+
+const seenUpdates = new Set();
+
+export async function onceUpdate(update, run) {
+  const id = update?.update_id;
+  const key = id == null || id === "" ? "" : String(id);
+  if (key && seenUpdates.has(key)) return { duplicate: true };
+  if (key) {
+    seenUpdates.add(key);
+    if (seenUpdates.size > 5000) seenUpdates.delete(seenUpdates.values().next().value);
+  }
+  try {
+    return await run();
+  } catch (error) {
+    if (key) seenUpdates.delete(key);
+    throw error;
+  }
 }

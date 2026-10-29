@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { AdminScreen } from "./AdminScreen";
-import { api, type ApiCourier, type Session, type SessionUser } from "./api";
+import { api, type ApiCourier, type AuthPhase, type Session, type SessionUser } from "./api";
+import { bindTelegramViewport, resolveTelegramWebApp, telegramBotLink, telegramWebApp } from "./telegram";
 import { BOOT_TIMEOUT_MS, bootPhase, bootProgress, WARM_KEY, type BootMarks } from "./boot";
 import { ElfinSplash } from "./components/ElfinSplash";
 import { CartScreen } from "./CartScreen";
@@ -21,6 +22,18 @@ import { ease, pageMove, sectionItem, sectionList, tapSpring } from "./motion";
 import { prewarmImages } from "./ImagePreloader";
 
 type Screen = "home" | "catalog" | "cart" | "orders" | "profile" | "checkout" | "courier" | "admin";
+
+function readProductHash() {
+  if (typeof window === "undefined") return null;
+  return window.location.hash.match(/^#product\/([a-z0-9-]+)$/i)?.[1] ?? null;
+}
+
+function readProductOrigin(): Screen {
+  if (typeof window === "undefined") return "home";
+  const from = (window.history.state as { productFrom?: Screen } | null)?.productFrom;
+  if (from === "home" || from === "catalog" || from === "cart" || from === "orders" || from === "profile") return from;
+  return readProductHash() ? "catalog" : "home";
+}
 type Age = "pending" | "ok" | "denied";
 type SheetRow = {
   id: string;
@@ -126,11 +139,16 @@ export function App() {
   const [age, setAge] = useState<Age>(() =>
     sessionStorage.getItem(AGE_KEY) === "ok" ? "ok" : "pending",
   );
-  const [screen, setScreen] = useState<Screen>("home");
-  const [productId, setProductId] = useState<string | null>(null);
+  const [screen, setScreen] = useState<Screen>(readProductOrigin);
+  const [productId, setProductId] = useState<string | null>(readProductHash);
+  const catalogScroll = useRef(0);
+  const opening = useRef<string | null>(null);
   const [cart, setCart] = useState<Record<string, number>>(readLooseCart);
   const [cartAdjusted, setCartAdjusted] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
+  const [authPhase, setAuthPhase] = useState<AuthPhase>("initializing");
+  const [payments, setPayments] = useState<string[]>(["cash"]);
+  const [botUrl, setBotUrl] = useState<string | null>(null);
   const [shopCity, setShopCity] = useState("HH");
   const [couriers, setCouriers] = useState<ApiCourier[]>([]);
   const [catalogMode, setCatalogMode] = useState<"loading" | "demo" | "live" | "error">("loading");
@@ -144,6 +162,8 @@ export function App() {
   const [splashOn, setSplashOn] = useState(true);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [checkoutHeld, setCheckoutHeld] = useState(false);
+  const [roleError, setRoleError] = useState<string | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
   const warmBoot = useRef(typeof sessionStorage !== "undefined" && sessionStorage.getItem(WARM_KEY) === "1");
   const marksRef = useRef<BootMarks>({ telegram: false, config: false, auth: false, catalog: false, images: false });
   const cartCount = useMemo(() => Object.values(cart).reduce((sum, count) => sum + count, 0), [cart]);
@@ -153,6 +173,7 @@ export function App() {
     : { kicker: "ELFIN MARKET", title: "ELFIN", lede: "Подтвердите возраст" };
 
   const soft = reduce ? { initial: false as const } : pageMove;
+  const view = productId ? "product" : screen;
 
   function settleCart() {
     setCart((current) => {
@@ -179,6 +200,8 @@ export function App() {
   const phase = bootPhase(marks, failed);
   const progress = bootProgress(marks);
 
+  useEffect(() => bindTelegramViewport(), []);
+
   useEffect(() => {
     let alive = true;
     setTelegramReady(false);
@@ -186,9 +209,11 @@ export function App() {
     setAuthReady(false);
     setImagesReady(false);
     setBootFailed(false);
-    const webApp = (window as unknown as { Telegram?: { WebApp?: { ready?: () => void; initData?: string } } }).Telegram?.WebApp;
+    setAuthPhase("initializing");
+    const webApp = telegramWebApp();
     try {
       webApp?.ready?.();
+      webApp?.expand?.();
     } catch {
       /* Telegram shell is optional in the browser. */
     }
@@ -199,29 +224,46 @@ export function App() {
       if (current.telegram && current.config && current.auth && current.catalog && current.images) return;
       setBootFailed(true);
     }, BOOT_TIMEOUT_MS);
-    api<{ city: string; cityName?: string; devAuth: boolean; catalog?: string }>("/api/config")
+    api<{ city: string; cityName?: string; devAuth: boolean; catalog?: string; payments?: string[]; botUsername?: string | null }>("/api/config")
       .then(async (config) => {
         if (!alive) return;
         setConfigReady(true);
         setShopCity(config.city || "HH");
+        setPayments(Array.isArray(config.payments) && config.payments.length > 0 ? config.payments : ["cash"]);
+        setBotUrl(telegramBotLink(config.botUsername));
         if (config.catalog === "demo") {
           setSheetCatalog([]);
           settleCart();
           setCatalogMode("demo");
         } else setCatalogMode("loading");
-        const initData = webApp?.initData;
+        const webApp = await resolveTelegramWebApp();
+        try {
+          webApp?.ready?.();
+          webApp?.expand?.();
+        } catch {
+          /* Telegram shell is optional in the browser. */
+        }
+        const initData = String(webApp?.initData || "").trim();
         if (initData) {
           try {
             const next = await api<Session>("/api/auth/telegram", { method: "POST", body: { initData } });
             if (!alive) return;
-            setSession({ ...next, city: config.city });
-          } catch {
-            /* Каталог открывается и без сессии. */
+            setSession({ ...next, dev: false, city: config.city });
+            setAuthError(null);
+            setAuthPhase("authenticated");
+          } catch (reason) {
+            if (!alive) return;
+            const message = reason instanceof Error ? reason.message : "";
+            setSession(null);
+            setAuthPhase(message === "Expired initData" ? "expired" : "error");
+            setAuthError("Не удалось подтвердить вход через Telegram. Откройте приложение заново.");
           }
           if (alive) setAuthReady(true);
           return;
         }
         if (!config.devAuth) {
+          setSession(null);
+          setAuthPhase("unauthenticated");
           setAuthReady(true);
           return;
         }
@@ -229,6 +271,7 @@ export function App() {
         const next = await api<Session>("/api/auth/dev", { method: "POST", body: { tgId: saved } });
         if (!alive) return;
         setSession({ ...next, city: config.city });
+        setAuthPhase("authenticated");
         setAuthReady(true);
       })
       .catch(() => {
@@ -270,7 +313,7 @@ export function App() {
   }, [session]);
 
   useEffect(() => {
-    if (!configReady || catalogMode === "demo" || catalogMode === "error") return;
+    if (!configReady || catalogMode === "error") return;
     let alive = true;
     if (catalogMode === "loading") {
       api<{ source?: string; products?: SheetRow[] }>(`/api/catalog?city=${encodeURIComponent(shopCity)}`, { token: session?.token })
@@ -304,9 +347,11 @@ export function App() {
 
   useEffect(() => {
     const read = () => {
-      const id = window.location.hash.match(/^#product\/([a-z0-9-]+)$/i)?.[1] ?? null;
+      const id = readProductHash();
       setProductId(id);
-      if (id) setScreen("catalog");
+      if (!id) return;
+      const from = (window.history.state as { productFrom?: Screen } | null)?.productFrom;
+      if (from === "home" || from === "catalog" || from === "cart" || from === "orders" || from === "profile") setScreen(from);
     };
     read();
     window.addEventListener("hashchange", read);
@@ -317,13 +362,35 @@ export function App() {
     };
   }, []);
 
+  useLayoutEffect(() => {
+    opening.current = productId;
+  }, [productId]);
+
+  useEffect(() => {
+    if (productId || screen !== "catalog") return;
+    const body = document.querySelector(".body");
+    if (!(body instanceof HTMLElement)) return;
+    const apply = () => {
+      if (!body.querySelector(".catalog-tools")) return;
+      body.scrollTop = catalogScroll.current;
+      observer.disconnect();
+    };
+    const observer = new MutationObserver(apply);
+    observer.observe(body, { childList: true, subtree: true });
+    apply();
+    return () => observer.disconnect();
+  }, [productId, screen]);
+
   function openProduct(id: string) {
-    setScreen("catalog");
+    if (productId === id || opening.current === id) return;
+    opening.current = id;
+    if (screen === "catalog") catalogScroll.current = document.querySelector(".body")?.scrollTop ?? 0;
     setProductId(id);
-    window.history.pushState(null, "", `#product/${id}`);
+    window.history.pushState({ productFrom: screen }, "", `#product/${id}`);
   }
 
   function closeProduct() {
+    opening.current = null;
     setProductId(null);
     window.history.pushState(null, "", `${window.location.pathname}${window.location.search}`);
   }
@@ -388,7 +455,7 @@ export function App() {
   }
 
   return (
-    <div className="stage" data-compact={compact ? "true" : "false"} data-nav={age === "ok" && !productId ? "true" : "false"} data-product={productId ? "true" : "false"} data-catalog={screen === "catalog" && !productId ? "true" : "false"} data-home={screen === "home" ? "true" : "false"}>
+    <div className="stage" data-compact={compact ? "true" : "false"} data-nav={age === "ok" ? "true" : "false"} data-product={productId ? "true" : "false"} data-checkout={checkoutOpen ? "true" : "false"} data-catalog={view === "catalog" ? "true" : "false"} data-home={view === "home" ? "true" : "false"}>
       <Atmosphere />
       <header className="toprow">
         <ElfMedallion />
@@ -439,27 +506,25 @@ export function App() {
             </motion.section>
           ) : (
             <motion.section
-              key={screen}
-              className={screen === "home" || screen === "catalog" ? "panel panel-home" : screen === "cart" || screen === "checkout" || screen === "orders" || screen === "courier" || screen === "admin" ? "panel panel-cart" : "panel"}
+              key={view}
+              className={view === "home" || view === "catalog" || view === "product" ? "panel panel-home" : view === "cart" || view === "checkout" || view === "orders" || view === "courier" || view === "admin" ? "panel panel-cart" : "panel"}
               {...soft}
             >
-              {screen === "home" ? <Home onOpen={setScreen} onProduct={openProduct} onCart={() => setScreen("cart")} cartCount={cartCount} token={session?.token ?? null} city={shopCity} shelf={catalogMode === "live" ? liveProducts.slice(0, 4) : []} live={catalogMode === "live"} /> : null}
-              {screen === "catalog" ? (
-                <div className={productId ? "screen-hold" : undefined}>
-                  <Catalog
-                    mode={catalogMode}
-                    items={liveProducts}
-                    cart={cart}
-                    onAdd={(id) => { addToCart(id); }}
-                    onOpen={openProduct}
-                    onRefresh={() => setCatalogMode("loading")}
-                  />
-                </div>
+              {view === "home" ? <Home onOpen={setScreen} onProduct={openProduct} onCart={() => setScreen("cart")} cartCount={cartCount} token={session?.token ?? null} city={shopCity} shelf={catalogMode === "live" ? liveProducts.slice(0, 4) : []} live={catalogMode === "live"} /> : null}
+              {view === "catalog" ? (
+                <Catalog
+                  mode={catalogMode}
+                  items={liveProducts}
+                  cart={cart}
+                  onAdd={(id) => { addToCart(id); }}
+                  onOpen={openProduct}
+                  onRefresh={() => setCatalogMode("loading")}
+                />
               ) : null}
-              {screen === "catalog" && productId ? (
-                <ProductScreen productId={productId} cart={cart} onBack={closeProduct} onAdd={addToCart} />
+              {view === "product" && productId ? (
+                <ProductScreen productId={productId} cart={cart} onBack={closeProduct} onAdd={addToCart} onCart={() => { closeProduct(); setScreen("cart"); }} />
               ) : null}
-              {screen === "cart" ? (
+              {view === "cart" ? (
                 <CartScreen
                   cart={cart}
                   adjusted={cartAdjusted}
@@ -471,12 +536,14 @@ export function App() {
                   onContinue={() => { setCheckoutHeld(true); setCheckoutOpen(true); }}
                 />
               ) : null}
-              {screen === "checkout" && !session ? <p className="empty-text">Нет сессии. Запустите API и откройте приложение снова.</p> : null}
-              {screen === "orders" && session ? <OrdersScreen token={session.token} city={session.city} onCatalog={() => setScreen("catalog")} /> : null}
-              {screen === "orders" && !session ? <p className="empty-text">История откроется после входа.</p> : null}
-              {screen === "profile" ? (
+              {view === "checkout" && !session ? <p className="empty-text">Нет сессии. Запустите API и откройте приложение снова.</p> : null}
+              {view === "orders" && session ? <OrdersScreen token={session.token} city={session.city} couriers={couriers} onCatalog={() => setScreen("catalog")} /> : null}
+              {view === "orders" && !session ? <p className="empty-text">{authPhase === "initializing" ? "Подтверждаем Telegram." : "История откроется после входа."}</p> : null}
+              {view === "profile" ? (
                 <Profile
                   session={session}
+                  authPhase={authPhase}
+                  authError={authError}
                   onCourier={() => {
                     if (session && (session.user.status === "courier" || session.user.status === "admin")) {
                       window.location.hash = "#/courier";
@@ -489,33 +556,31 @@ export function App() {
                       setScreen("admin");
                     }
                   }}
+                  roleError={roleError}
                   onRole={async (tgId) => {
                     localStorage.setItem("elfin-dev-user", tgId);
-                    const next = await api<Session>("/api/auth/dev", { method: "POST", body: { tgId } });
-                    setSession({ ...next, city: session?.city || next.city });
-                    setScreen("profile");
+                    try {
+                      const next = await api<Session>("/api/auth/dev", { method: "POST", body: { tgId } });
+                      setSession({ ...next, city: session?.city || next.city });
+                      setRoleError(null);
+                      setScreen("profile");
+                    } catch (reason) {
+                      setRoleError(reason instanceof Error ? reason.message : "Ошибка запроса");
+                    }
                   }}
                 />
               ) : null}
-              {screen === "courier" && session && (session.user.status === "courier" || session.user.status === "admin") ? (
+              {view === "courier" && session && (session.user.status === "courier" || session.user.status === "admin") ? (
                 <CourierScreen token={session.token} city={session.city} />
               ) : null}
-              {screen === "admin" && session?.user.status === "admin" ? <AdminScreen token={session.token} city={session.city} /> : null}
+              {view === "admin" && session?.user.status === "admin" ? <AdminScreen token={session.token} city={session.city} /> : null}
             </motion.section>
           )}
         </AnimatePresence>
       </div>
 
-      <AnimatePresence>
-        {age === "ok" ? (
-          <motion.nav
-            className="nav"
-            aria-label="Разделы"
-            initial={reduce ? false : { y: 20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={reduce ? undefined : { y: 16, opacity: 0 }}
-            transition={{ duration: 0.38, ease }}
-          >
+      {age === "ok" ? (
+          <nav className="nav" aria-label="Разделы" inert={checkoutOpen ? true : undefined}>
             {screens.map((item) => {
               const active = item.id === screen || (screen === "checkout" && item.id === "cart") || ((screen === "courier" || screen === "admin") && item.id === "profile");
               return (
@@ -523,7 +588,15 @@ export function App() {
                   key={item.id}
                   className={active ? "nav-btn is-active" : "nav-btn"}
                   current={active}
-                  onClick={() => setScreen(item.id)}
+                  onClick={() => {
+                    const hash = window.location.hash;
+                    if (hash === "#/courier" || hash === "#/admin" || hash.startsWith("#product/")) {
+                      window.history.pushState(null, "", `${window.location.pathname}${window.location.search}`);
+                    }
+                    if (productId) setProductId(null);
+                    setCheckoutOpen(false);
+                    setScreen(item.id);
+                  }}
                 >
                   {active ? (
                     reduce ? <span className="nav-pill" /> : <motion.span layoutId="nav-pill" className="nav-pill" transition={navIndicator} />
@@ -534,9 +607,8 @@ export function App() {
                 </Press>
               );
             })}
-          </motion.nav>
+          </nav>
         ) : null}
-      </AnimatePresence>
       {checkoutHeld ? (
         <div className={checkoutOpen ? "sheet-layer is-open" : "sheet-layer"} aria-hidden={!checkoutOpen} inert={!checkoutOpen ? true : undefined}>
           <button type="button" className="sheet-scrim" aria-label="Закрыть оформление" onClick={() => setCheckoutOpen(false)} />
@@ -546,11 +618,16 @@ export function App() {
               token={session?.token ?? ""}
               city={session?.city || shopCity}
               user={session?.user ?? guestUser}
+              verified={Boolean(session && !session.dev && session.user.tgId)}
+              authPhase={authPhase}
+              payments={payments}
+              botUrl={botUrl}
               couriers={couriers}
               onClearCart={() => setCart({})}
               onCatalog={() => { setCheckoutOpen(false); setScreen("catalog"); }}
               onOrders={() => { setCheckoutOpen(false); setScreen("orders"); }}
               onClose={() => setCheckoutOpen(false)}
+              authFailed={Boolean(authError)}
             />
           </div>
         </div>
@@ -658,7 +735,7 @@ function Home({
         </div>
         <div className="shelf">
           {cards.map((item) => (
-            <button key={item.id} type="button" className="product home-card" onClick={() => live ? onOpen("catalog") : onProduct(item.id)}>
+            <button key={item.id} type="button" className="product home-card" onClick={() => onProduct(item.id)}>
               <HomeArt item={item} />
               <span className="product-name">{item.brand || item.name}</span>
               <span className="product-flavor">{item.flavor}</span>
@@ -719,20 +796,36 @@ function HomeArt({ item }: { item: Product }) {
 
 function Profile({
   session,
+  authPhase,
+  authError,
   onCourier,
   onAdmin,
   onRole,
+  roleError,
 }: {
   session: Session | null;
+  authPhase: AuthPhase;
+  authError?: string | null;
   onCourier: () => void;
   onAdmin: () => void;
   onRole: (tgId: string) => void;
+  roleError?: string | null;
 }) {
+  const verified = Boolean(session && !session.dev && session.user.tgId);
   const facts = [
     ["Возраст", "подтверждён"],
     ["Город", "Hamburg"],
     ["Роль", session?.user.status || "нет сессии"],
+    ["Вход", authPhase === "initializing" ? "проверяем" : verified ? "Telegram" : session?.dev ? "тестовый" : "нет"],
   ];
+  if (verified && session) {
+    const name = [session.user.firstName, session.user.lastName].filter(Boolean).join(" ");
+    facts.push(
+      ["Имя", name || "Имя не указано"],
+      ["Username", session.user.username ? `@${session.user.username}` : "Username не установлен"],
+      ["Telegram ID", session.user.tgId],
+    );
+  }
   const staff = session?.user.status === "courier" || session?.user.status === "admin";
 
   return (
@@ -745,6 +838,8 @@ function Profile({
       ))}
       {staff ? <Press className="btn btn-ghost" onClick={onCourier}>Панель курьера</Press> : null}
       {session?.user.status === "admin" ? <Press className="btn btn-ghost" onClick={onAdmin}>Админка</Press> : null}
+      {authError ? <p className="checkout-error" role="alert">{authError}</p> : null}
+      {roleError ? <p className="checkout-error" role="alert">{roleError}</p> : null}
       {session?.dev ? (
         <div className="choice-row">
           <button type="button" className="choice" onClick={() => onRole("123456789")}>Покупатель</button>

@@ -6,10 +6,12 @@ export function CountBump({
   value,
   className,
   label,
+  onClick,
 }: {
   value: number;
   className: string;
   label: string;
+  onClick?: () => void;
 }) {
   const reduce = useReducedMotion();
   const ready = useRef(false);
@@ -26,13 +28,23 @@ export function CountBump({
     return () => window.clearTimeout(id);
   }, [value, reduce]);
 
+  const motionProps = {
+    className,
+    "aria-label": label,
+    animate: play ? cartBump : { scale: 1, rotate: 0 },
+    transition: addPulse,
+    whileTap: onClick && !reduce ? { scale: 0.96 } : undefined,
+    onClick,
+  };
+  if (onClick) {
+    return (
+      <motion.button type="button" {...motionProps}>
+        {value}
+      </motion.button>
+    );
+  }
   return (
-    <motion.span
-      className={className}
-      aria-label={label}
-      animate={play ? cartBump : { scale: 1, rotate: 0 }}
-      transition={addPulse}
-    >
+    <motion.span {...motionProps}>
       {value}
     </motion.span>
   );

@@ -10,6 +10,7 @@ const nextStep: Record<string, { status: string; label: string } | undefined> = 
 export function AdminScreen({ token, city }: { token: string; city: string }) {
   const [orders, setOrders] = useState<ApiOrder[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   function load() {
     return api<{ orders: ApiOrder[] }>(`/api/admin/orders?city=${encodeURIComponent(city)}`, { token })
@@ -32,12 +33,16 @@ export function AdminScreen({ token, city }: { token: string; city: string }) {
   }, [token, city]);
 
   async function setStatus(orderId: string, status: string) {
+    if (busyId) return;
+    setBusyId(orderId);
     setError(null);
     try {
       await api("/api/admin/orders/status", { method: "POST", token, body: { city, orderId, status } });
       await load();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Ошибка запроса");
+    } finally {
+      setBusyId(null);
     }
   }
 
@@ -56,8 +61,8 @@ export function AdminScreen({ token, city }: { token: string; city: string }) {
             </div>
             <p>{order.place || "Без адреса"} · {order.time || "без времени"}</p>
             <div className="choice-row">
-              {step ? <button type="button" className="btn btn-primary choice-btn" onClick={() => setStatus(order.orderId, step.status)}>{step.label}</button> : null}
-              {canCancel ? <button type="button" className="btn btn-ghost choice-btn" onClick={() => setStatus(order.orderId, "cancelled")}>Отменить</button> : null}
+              {step ? <button type="button" className="btn btn-primary choice-btn" disabled={busyId === order.orderId} onClick={() => setStatus(order.orderId, step.status)}>{busyId === order.orderId ? "Сохраняем" : step.label}</button> : null}
+              {canCancel ? <button type="button" className="btn btn-ghost choice-btn" disabled={busyId === order.orderId} onClick={() => setStatus(order.orderId, "cancelled")}>Отменить</button> : null}
             </div>
           </article>
         );

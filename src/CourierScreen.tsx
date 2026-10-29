@@ -12,11 +12,12 @@ export function CourierScreen({ token, city }: { token: string; city: string }) 
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<{ id: string; action: "delivered" | "cancelled" } | null>(null);
   const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
 
   function load() {
     return api<{ orders: ApiOrder[] }>(`/api/courier/orders?city=${encodeURIComponent(city)}`, { token })
       .then((data) => setOrders(data.orders))
-      .catch((reasonError: Error) => setError(reasonError.message));
+      .catch((reasonError: Error) => setError(reasonError.message === "Forbidden" ? "Эта роль не назначена курьером." : reasonError.message));
   }
 
   useEffect(() => {
@@ -26,7 +27,7 @@ export function CourierScreen({ token, city }: { token: string; city: string }) 
         if (alive) setOrders(data.orders);
       })
       .catch((reasonError: Error) => {
-        if (alive) setError(reasonError.message);
+        if (alive) setError(reasonError.message === "Forbidden" ? "Эта роль не назначена курьером." : reasonError.message);
       });
     return () => {
       alive = false;
@@ -34,14 +35,18 @@ export function CourierScreen({ token, city }: { token: string; city: string }) 
   }, [token, city]);
 
   async function start(id: string, action: "delivered" | "cancelled") {
+    if (busy) return;
     const telegram = await askTelegram(action === "delivered" ? `Подтвердить выдачу ${id}?` : `Отменить выдачу ${id}?`);
     if (telegram === false) return;
     if (telegram === true && action === "delivered") {
+      setBusy(true);
       try {
         await api("/api/courier/orders/status", { method: "POST", token, body: { city, orderId: id, status: "delivered" } });
         await load();
       } catch (reasonError) {
         setError(reasonError instanceof Error ? reasonError.message : "Ошибка запроса");
+      } finally {
+        setBusy(false);
       }
       return;
     }
@@ -51,7 +56,8 @@ export function CourierScreen({ token, city }: { token: string; city: string }) 
   }
 
   async function confirm() {
-    if (!pending) return;
+    if (!pending || busy) return;
+    setBusy(true);
     try {
       await api("/api/courier/orders/status", {
         method: "POST",
@@ -68,13 +74,15 @@ export function CourierScreen({ token, city }: { token: string; city: string }) 
       await load();
     } catch (reasonError) {
       setError(reasonError instanceof Error ? reasonError.message : "Ошибка запроса");
+    } finally {
+      setBusy(false);
     }
   }
 
   return (
     <div className="checkout-page">
       {error ? <p className="checkout-error" role="alert">{error}</p> : null}
-      {orders.length === 0 ? <p className="empty-text">Назначенных заказов нет.</p> : null}
+      {!error && orders.length === 0 ? <p className="empty-text">Назначенных заказов нет.</p> : null}
       <div className="order-list">
         {orders.map((order) => {
           const open = order.status === "pending" || order.status === "assigned" || order.status === "picked_up";
@@ -104,8 +112,8 @@ export function CourierScreen({ token, city }: { token: string; city: string }) 
               </ul>
               {open ? (
                 <div className="choice-row">
-                  <button type="button" className="btn btn-primary choice-btn" onClick={() => start(order.orderId, "delivered")}>Выдал</button>
-                  <button type="button" className="btn btn-ghost choice-btn" onClick={() => start(order.orderId, "cancelled")}>Не выдал</button>
+                  <button type="button" className="btn btn-primary choice-btn" disabled={busy} onClick={() => start(order.orderId, "delivered")}>Выдал</button>
+                  <button type="button" className="btn btn-ghost choice-btn" disabled={busy} onClick={() => start(order.orderId, "cancelled")}>Не выдал</button>
                 </div>
               ) : null}
             </article>
@@ -124,8 +132,8 @@ export function CourierScreen({ token, city }: { token: string; city: string }) 
               </label>
             ) : null}
             <div className="choice-row">
-              <motion.button type="button" className="btn btn-primary choice-btn" onClick={confirm} whileTap={reduce ? undefined : { scale: 0.97 }} transition={tapSpring}>
-                Подтвердить
+              <motion.button type="button" className="btn btn-primary choice-btn" onClick={confirm} disabled={busy} whileTap={reduce || busy ? undefined : { scale: 0.97 }} transition={tapSpring}>
+                {busy ? "Сохраняем" : "Подтвердить"}
               </motion.button>
               <button type="button" className="btn btn-ghost choice-btn" onClick={() => setPending(null)}>Назад</button>
             </div>

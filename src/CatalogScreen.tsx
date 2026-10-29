@@ -9,6 +9,24 @@ import { cardItem, cardList, tapSpring } from "./motion";
 import { readSaved, SAVED_EVENT, writeSaved } from "./saved";
 
 const sections = ["Все", "Жидкости", "POD", "Устройства"] as const;
+const FILTER_KEY = "elfin-catalog-ui";
+
+function readFilters() {
+  const fallback = { query: "", section: "Все" as (typeof sections)[number], brand: "Все бренды", savedOnly: false, inStock: false };
+  try {
+    const data = JSON.parse(sessionStorage.getItem(FILTER_KEY) || "") as Partial<typeof fallback>;
+    const section = sections.includes(data.section as (typeof sections)[number]) ? data.section as (typeof sections)[number] : "Все";
+    return {
+      query: typeof data.query === "string" ? data.query : "",
+      section,
+      brand: typeof data.brand === "string" ? data.brand : "Все бренды",
+      savedOnly: Boolean(data.savedOnly),
+      inStock: Boolean(data.inStock),
+    };
+  } catch {
+    return fallback;
+  }
+}
 
 export function Catalog({
   cart,
@@ -26,17 +44,22 @@ export function Catalog({
   onRefresh: () => void;
 }) {
   const reduce = useReducedMotion();
-  const [query, setQuery] = useState("");
-  const [section, setSection] = useState<(typeof sections)[number]>("Все");
-  const [brand, setBrand] = useState("Все бренды");
-  const [savedOnly, setSavedOnly] = useState(false);
-  const [inStock, setInStock] = useState(false);
+  const initialFilters = useRef(readFilters());
+  const [query, setQuery] = useState(initialFilters.current.query);
+  const [section, setSection] = useState<(typeof sections)[number]>(initialFilters.current.section);
+  const [brand, setBrand] = useState(initialFilters.current.brand);
+  const [savedOnly, setSavedOnly] = useState(initialFilters.current.savedOnly);
+  const [inStock, setInStock] = useState(initialFilters.current.inStock);
   const [saved, setSaved] = useState(readSaved);
 
   const source = useMemo(
     () => (mode === "demo" ? products.filter((item) => shopSection(item.category)) : items),
     [mode, items],
   );
+
+  useEffect(() => {
+    sessionStorage.setItem(FILTER_KEY, JSON.stringify({ query, section, brand, savedOnly, inStock }));
+  }, [query, section, brand, savedOnly, inStock]);
 
   useEffect(() => {
     if (mode !== "demo" && mode !== "live") return;
@@ -121,6 +144,11 @@ export function Catalog({
             enterKeyHint="search"
             aria-label="Поиск"
           />
+          {query ? (
+            <button type="button" className="search-clear" aria-label="Очистить поиск" onClick={() => setQuery("")}>
+              ×
+            </button>
+          ) : null}
         </label>
         <div className="cat-chips" role="tablist" aria-label="Разделы">
           {sections.map((item) => (
@@ -201,7 +229,7 @@ export function Catalog({
               По наличию
             </button>
           </div>
-          <ProductGrid key={`${section}-${brand}-${savedOnly}-${inStock}-${query}`} items={visible} cart={cart} saved={saved} mode={mode} onAdd={onAdd} onOpen={onOpen} onToggle={toggleSaved} reduce={Boolean(reduce)} />
+          <ProductGrid items={visible} cart={cart} saved={saved} mode={mode} onAdd={onAdd} onOpen={onOpen} onToggle={toggleSaved} reduce={Boolean(reduce)} />
         </section>
       ) : null}
     </div>
@@ -245,18 +273,21 @@ function ProductGrid({
           >
             <div className="product-art">
               <ProductArt item={item} />
-              <button
+              <motion.button
                 type="button"
                 className={liked ? "card-heart is-on" : "card-heart"}
                 aria-pressed={liked}
                 aria-label={liked ? "Убрать из избранного" : "В избранное"}
+                whileTap={reduce ? undefined : { scale: 0.96 }}
+                transition={tapSpring}
+                onPointerDown={(event) => event.stopPropagation()}
                 onClick={(event) => {
                   event.stopPropagation();
                   onToggle(item.id);
                 }}
               >
                 <HeartIcon filled={liked} />
-              </button>
+              </motion.button>
             </div>
             <h3 className="product-name">{item.brand || item.name}</h3>
             <p className="product-flavor">{item.flavor}</p>

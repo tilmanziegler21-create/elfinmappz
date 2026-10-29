@@ -13,3 +13,6 @@ credentials
 .data/
 *.log
 *-credentials.json
+test-results
+playwright-report
+blob-report

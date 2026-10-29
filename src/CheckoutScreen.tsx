@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { CrystalIllustration } from "./CrystalIllustration";
 import { EmptyState } from "./EmptyState";
-import { api, todayDate, type ApiCourier, type SessionUser } from "./api";
+import { api, todayDate, type ApiCourier, type AuthPhase, type SessionUser } from "./api";
 import { cartEntries, cartMoney, euro } from "./products";
 import { tapSpring } from "./motion";
 
@@ -11,21 +11,31 @@ export function CheckoutScreen({
   token,
   city,
   user,
+  verified = false,
+  authPhase = "unauthenticated",
+  payments = ["cash"],
+  botUrl = null,
   couriers,
   onClearCart,
   onCatalog,
   onOrders,
   onClose,
+  authFailed = false,
 }: {
   cart: Record<string, number>;
   token: string;
   city: string;
   user: SessionUser;
+  verified?: boolean;
+  authPhase?: AuthPhase;
+  payments?: string[];
+  botUrl?: string | null;
   couriers: ApiCourier[];
   onClearCart: () => void;
   onCatalog: () => void;
   onOrders: () => void;
   onClose?: () => void;
+  authFailed?: boolean;
 }) {
   const reduce = useReducedMotion();
   const lines = cartEntries(cart);
@@ -42,6 +52,7 @@ export function CheckoutScreen({
   const [time, setTime] = useState(slots[0] ?? "");
   const [place, setPlace] = useState("");
   const [comment, setComment] = useState("");
+  const [payment, setPayment] = useState("cash");
   const [error, setError] = useState<string | null>(null);
   const [phase, setPhase] = useState<"form" | "loading" | "done">("form");
   const [orderId, setOrderId] = useState<string | null>(null);
@@ -81,8 +92,14 @@ export function CheckoutScreen({
 
   async function submit() {
     if (busy || phase !== "form") return;
-    if (!token) {
-      setError("Откройте магазин в Telegram, чтобы подтвердить заказ.");
+    if (!token || authPhase === "expired" || authPhase === "error") {
+      setError(authFailed || authPhase === "expired" || authPhase === "error"
+        ? "Не удалось подтвердить вход через Telegram. Откройте приложение заново."
+        : "Откройте магазин через Telegram, чтобы подтвердить заказ.");
+      return;
+    }
+    if (!payments.includes(payment)) {
+      setError("Этот способ оплаты недоступен.");
       return;
     }
     if (!courier) {
@@ -134,17 +151,22 @@ export function CheckoutScreen({
             courierData: {
               address: meeting,
               comment,
-              user: { tgId: user.tgId, username: user.username, name: customerName.trim(), contact: contact.trim() },
+              user: {
+                tgId: user.tgId,
+                username: user.username,
+                name: (verified ? [user.firstName, user.lastName].filter(Boolean).join(" ") : customerName.trim()),
+                contact: verified ? (user.username ? `@${user.username}` : user.tgId) : contact.trim(),
+              },
             },
           },
         });
-        confirmed.current = true;
         if (confirmedBody.telegram === false) {
           setBusy(false);
           setPhase("form");
           setError("Telegram не принял заказ.");
           return;
         }
+        confirmed.current = true;
       }
       await api("/api/order/payment", {
         method: "POST",
@@ -152,7 +174,7 @@ export function CheckoutScreen({
         body: {
           orderId: createdId.current,
           city,
-          paymentMethod: "cash",
+          paymentMethod: payment,
           bonusApplied: 0,
         },
       });
@@ -164,7 +186,12 @@ export function CheckoutScreen({
       setBusy(false);
       setPhase("form");
       const message = reason instanceof Error ? reason.message : "";
-      setError(message === "ORDERS_NEED_DATABASE" ? "Демонстрационный режим: заказ не сохраняется, пока не подключена база." : message || "Ошибка запроса");
+      const validation = message === "Выберите время" || message === "Выберите курьера" || message === "Укажите адрес" || message === "Укажите точку встречи";
+      setError(message === "ORDERS_NEED_DATABASE"
+        ? "Оформление заказов временно недоступно."
+        : validation
+          ? message
+          : "Заказ не удалось сохранить. Попробуйте ещё раз.");
     }
   }
 
@@ -225,6 +252,20 @@ export function CheckoutScreen({
           <button type="button" className={fulfillment === "pickup" ? "is-on" : ""} onClick={() => { setFulfillment("pickup"); setError(null); }}>Самовывоз</button>
           <button type="button" className={fulfillment === "delivery" ? "is-on" : ""} onClick={() => { setFulfillment("delivery"); setError(null); }}>Адрес</button>
         </div>
+        {authPhase === "initializing" ? <p className="cart-caption">Подтверждаем Telegram.</p> : null}
+        {verified ? (
+          <div className="facts">
+            <div className="fact"><span>Ваш Telegram</span><strong>подключён</strong></div>
+            <div className="fact"><span>Имя</span><strong>{[user.firstName, user.lastName].filter(Boolean).join(" ") || "Имя не указано"}</strong></div>
+            <div className="fact"><span>Username</span><strong>{user.username ? `@${user.username}` : "Username не установлен"}</strong></div>
+            <div className="fact"><span>Telegram ID</span><strong>{user.tgId}</strong></div>
+          </div>
+        ) : authPhase === "initializing" ? null : (
+          <div>
+            <p className="cart-caption">{authPhase === "expired" || authPhase === "error" || authFailed ? "Не удалось подтвердить вход через Telegram. Откройте приложение заново." : "Откройте магазин через Telegram, чтобы подтвердить заказ."}</p>
+            {botUrl ? <a className="btn btn-primary" href={botUrl}>Открыть через Telegram</a> : null}
+          </div>
+        )}
         <label className="order-field">
           <span>Курьер</span>
           <select value={courierId} onChange={(event) => chooseCourier(event.target.value)}>
@@ -234,14 +275,18 @@ export function CheckoutScreen({
             ))}
           </select>
         </label>
-        <label className="order-field">
-          <span>Имя</span>
-          <input value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Имя" autoComplete="name" />
-        </label>
-        <label className="order-field">
-          <span>Telegram или телефон</span>
-          <input value={contact} onChange={(event) => setContact(event.target.value)} placeholder="@username или телефон" autoComplete="tel" />
-        </label>
+        {verified ? null : (
+          <>
+            <label className="order-field">
+              <span>Имя</span>
+              <input value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Имя" autoComplete="name" />
+            </label>
+            <label className="order-field">
+              <span>Telegram или телефон</span>
+              <input value={contact} onChange={(event) => setContact(event.target.value)} placeholder="@username или телефон" autoComplete="tel" />
+            </label>
+          </>
+        )}
         <label className="order-field">
           <span>Время</span>
           <select value={time} onChange={(event) => setTime(event.target.value)} disabled={!courier}>
@@ -263,11 +308,14 @@ export function CheckoutScreen({
       <div className="order-dock">
         {error ? <p className="checkout-error" role="alert">{error}</p> : null}
         <div className="pay-row" role="group" aria-label="Оплата">
-          <button type="button" className="pay-tile is-on" aria-pressed="true" title="Оплата наличными при встрече">Наличные</button>
-          <button type="button" className="pay-tile" disabled title="Карта в демонстрационном режиме недоступна">Карта</button>
-          <button type="button" className="pay-tile" disabled title="Крипто в демонстрационном режиме недоступна">Крипто</button>
+          <button type="button" className={payment === "cash" ? "pay-tile is-on" : "pay-tile"} aria-pressed={payment === "cash"} disabled={!payments.includes("cash")} onClick={() => setPayment("cash")}>
+            {payment === "cash" ? <svg className="pay-check" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.2 6.2 11.5 13 4.5" fill="none" stroke="currentColor" strokeWidth="1.8" /></svg> : null}
+            Наличные
+          </button>
+          <button type="button" className="pay-tile" disabled title="Карта при получении пока недоступна">Карта при получении</button>
+          <button type="button" className="pay-tile" disabled title="Другой способ пока недоступен">Другое</button>
         </div>
-        <p className="cart-caption">Карта и крипто недоступны. Оплата наличными при встрече.</p>
+        <p className="cart-caption">Сейчас доступны только наличные при встрече. Карта и другие способы не подключены.</p>
         <div className="order-sum">
           <span>Товары</span>
           <strong>{euro(total)}</strong>

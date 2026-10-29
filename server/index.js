@@ -23,9 +23,9 @@ import { readHamburgSources } from "./hhRead.js";
 import { hhTabReport, listSheetTitles, loadServiceAccount, sheetCode, sheetTabs, spreadsheetMeta } from "./sheetsRead.js";
 import { withMedia } from "./productMedia.js";
 import { enqueueNotice, trySendNotice } from "./notices.js";
-import { httpsUrl } from "./bot.js";
+import { httpsUrl, onceUpdate } from "./bot.js";
 import { language } from "./botCopy.js";
-import { dispatchUpdate, runPolling } from "./botPoll.js";
+import { configureBot, dispatchUpdate, runPolling } from "./botPoll.js";
 import { courierSlots } from "./slots.js";
 
 const PORT = Number(process.env.PORT || 8787);
@@ -137,9 +137,10 @@ function signUser(user) {
 
 function publicUser(user) {
   return {
-    tgId: user.tg_id,
+    tgId: String(user.tg_id),
     username: user.username || "",
     firstName: user.first_name || "",
+    lastName: user.last_name || "",
     status: user.status || "user",
   };
 }
@@ -200,7 +201,20 @@ function verifyInitData(initData) {
     error.status = 401;
     throw error;
   }
-  return JSON.parse(raw);
+  const id = String(raw).match(/"id"\s*:\s*(\d+)/)?.[1] || "";
+  if (!id) {
+    const error = new Error("No user in initData");
+    error.status = 401;
+    throw error;
+  }
+  const user = JSON.parse(raw);
+  user.id = id;
+  return user;
+}
+
+function botUsername() {
+  const name = String(process.env.TELEGRAM_BOT_USERNAME || "").trim().replace(/^@/, "");
+  return /^[A-Za-z0-9_]{5,32}$/.test(name) ? name : null;
 }
 
 function syncRole(user) {
@@ -212,13 +226,14 @@ function syncRole(user) {
   return user;
 }
 
-function ensureUser(tgId, username, firstName) {
+function ensureUser(tgId, username, firstName, lastName = "") {
   const id = String(tgId);
   if (!db().users[id]) {
     db().users[id] = {
       tg_id: id,
       username: username || "",
       first_name: firstName || "",
+      last_name: lastName || "",
       status: "user",
       bonus_balance: 0,
       level_percent: 0,
@@ -229,7 +244,11 @@ function ensureUser(tgId, username, firstName) {
       created_at: new Date().toISOString(),
     };
   }
-  return syncRole(db().users[id]);
+  const user = db().users[id];
+  if (firstName) user.first_name = firstName;
+  if (lastName) user.last_name = lastName;
+  user.username = username || "";
+  return syncRole(user);
 }
 
 function normalizeStatus(raw) {
@@ -590,6 +609,8 @@ app.get("/api/config", (_req, res) => {
     priceMatch: process.env.ENABLE_PRICE_MATCH === "1",
     liveOrders: process.env.ENABLE_LIVE_ORDERS === "1",
     sheetsWrites: process.env.SHEETS_READ_ONLY === "0",
+    payments: ["cash"],
+    botUsername: botUsername(),
   });
 });
 
@@ -604,8 +625,7 @@ app.post("/api/auth/dev", (req, res) => {
 app.post("/api/auth/telegram", (req, res) => {
   try {
     const telegramUser = verifyInitData(String(req.body?.initData || ""));
-    const user = ensureUser(telegramUser.id, telegramUser.username, telegramUser.first_name);
-    if (telegramUser.username) user.username = telegramUser.username;
+    const user = ensureUser(telegramUser.id, telegramUser.username, telegramUser.first_name, telegramUser.last_name);
     persist();
     res.json({ token: signUser(user), user: publicUser(user), dev: false, city: CITY });
   } catch (error) {
@@ -1034,6 +1054,7 @@ function ownOrders(tgId) {
 function botContext() {
   return {
     miniAppUrl: process.env.MINIAPP_PUBLIC_URL || "",
+    ordersReady: storageMode() === "persistent",
     managerId: String(process.env.SUPPORT_TG_ID || "").trim(),
     ensureUser(from) {
       const user = ensureUser(from.id, from.username, from.first_name);
@@ -1185,8 +1206,6 @@ function botContext() {
   };
 }
 
-const seenUpdates = new Set();
-
 function sameSecret(left, right) {
   const a = Buffer.from(String(left || ""));
   const b = Buffer.from(String(right || ""));
@@ -1198,16 +1217,12 @@ app.post("/api/telegram/webhook", async (req, res) => {
   if (!sameSecret(req.get("x-telegram-bot-api-secret-token"), process.env.TELEGRAM_WEBHOOK_SECRET)) {
     return res.status(401).json({ error: "Unauthorized" });
   }
-  const updateId = req.body?.update_id;
-  if (updateId != null && seenUpdates.has(updateId)) return res.json({ ok: true, duplicate: true });
-  if (updateId != null) {
-    seenUpdates.add(updateId);
-    if (seenUpdates.size > 5000) seenUpdates.delete(seenUpdates.values().next().value);
-  }
   try {
-    await dispatchUpdate(String(process.env.TELEGRAM_BOT_TOKEN || ""), req.body || {}, botContext());
+    const outcome = await onceUpdate(req.body, () => dispatchUpdate(String(process.env.TELEGRAM_BOT_TOKEN || ""), req.body || {}, botContext()));
+    if (outcome?.duplicate) return res.json({ ok: true, duplicate: true });
   } catch (error) {
     console.error("Webhook error:", error?.code || error?.message || "error");
+    if (!res.headersSent) return res.status(500).json({ ok: false });
   }
   if (!res.headersSent) res.json({ ok: true });
 });
@@ -1307,6 +1322,11 @@ async function boot() {
   process.once("SIGINT", stop);
   const production = process.env.NODE_ENV === "production";
   const polling = process.env.TELEGRAM_POLLING === "1" && process.env.BOT_MODE !== "webhook" && !production;
+  if (process.env.TELEGRAM_BOT_TOKEN) {
+    configureBot(process.env.TELEGRAM_BOT_TOKEN).catch((error) => {
+      console.error("Bot setup:", error?.code || error?.message || "error");
+    });
+  }
   if (production && process.env.TELEGRAM_POLLING === "1") console.error("Polling is disabled in production. Use BOT_MODE=webhook.");
   if (polling && process.env.TELEGRAM_BOT_TOKEN) {
     const poll = new AbortController();

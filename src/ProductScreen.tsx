@@ -26,11 +26,13 @@ export function ProductScreen({
   cart,
   onBack,
   onAdd,
+  onCart,
 }: {
   productId: string;
   cart: Record<string, number>;
   onBack: () => void;
   onAdd: (productId: string, qty: number, variantId: string) => AddResult;
+  onCart: () => void;
 }) {
   const reduce = useReducedMotion();
   const product = findProduct(productId);
@@ -102,7 +104,7 @@ export function ProductScreen({
   if (!product) {
     return (
       <div className={out ? "product-page is-out" : "product-page"}>
-        <ProductBar category="Каталог" cartCount={cartTotal(cart)} onBack={leave} />
+        <ProductBar category="Каталог" cartCount={cartTotal(cart)} onBack={leave} onCart={onCart} />
         <div className="empty catalog-empty">
           <div className="mark mark-lg" aria-hidden="true" />
           <p className="empty-title">Позиция не найдена</p>
@@ -140,7 +142,7 @@ export function ProductScreen({
 
   return (
     <div className={out ? "product-page is-out" : "product-page"}>
-      <ProductBar category={sectionLabel(current.category)} cartCount={cartTotal(cart)} onBack={leave} />
+      <ProductBar category={sectionLabel(current.category)} cartCount={cartTotal(cart)} onBack={leave} onCart={onCart} />
       <div className="product-scroll">
         <motion.div
           className="hero-scene"
@@ -210,6 +212,23 @@ export function ProductScreen({
             <span>{variant?.label ?? "Выбрать"}</span>
             <strong>{current.preview || !variant ? "—" : euro(variant.price)}</strong>
           </button>
+          <h3 className="section-label">Количество</h3>
+          <div className="qty">
+            <motion.button type="button" onClick={() => setQty((value) => Math.max(1, value - 1))} disabled={blocked || qty <= 1} whileTap={reduce || blocked || qty <= 1 ? undefined : productTap} transition={tapSpring} aria-label="Меньше">
+              −
+            </motion.button>
+            <span>{blocked ? 0 : qty}</span>
+            <motion.button
+              type="button"
+              onClick={() => setQty((value) => Math.min(remaining, value + 1))}
+              disabled={blocked || qty >= remaining}
+              whileTap={reduce || blocked || qty >= remaining ? undefined : productTap}
+              transition={tapSpring}
+              aria-label="Больше"
+            >
+              +
+            </motion.button>
+          </div>
           <VariantBottomSheet
             open={sheet}
             variants={current.variants}
@@ -228,20 +247,6 @@ export function ProductScreen({
             {flavorChoice ? null : <div className="fact"><span>Объём</span><strong>{variant?.label ?? "—"}</strong></div>}
           </div>
 
-          <h3 className="section-label">Количество</h3>
-          <div className="qty">
-            <button type="button" onClick={() => setQty((value) => Math.max(1, value - 1))} disabled={blocked || qty <= 1}>
-              −
-            </button>
-            <span>{blocked ? 0 : qty}</span>
-            <button
-              type="button"
-              onClick={() => setQty((value) => Math.min(remaining, value + 1))}
-              disabled={blocked || qty >= remaining}
-            >
-              +
-            </button>
-          </div>
         </div>
       </div>
 
@@ -267,10 +272,12 @@ function ProductBar({
   category,
   cartCount,
   onBack,
+  onCart,
 }: {
   category: string;
   cartCount: number;
   onBack: () => void;
+  onCart: () => void;
 }) {
   const reduce = useReducedMotion();
   return (
@@ -288,7 +295,7 @@ function ProductBar({
         </svg>
       </motion.button>
       <p className="product-bar-title">{category}</p>
-      <CountBump className="cart-pill" value={cartCount} label={`В корзине ${cartCount}`} />
+      <CountBump className="cart-pill" value={cartCount} label={cartCount > 0 ? `Корзина, ${cartCount}` : "Корзина"} onClick={onCart} />
     </div>
   );
 }

@@ -6,7 +6,7 @@ export const pageMove = {
   initial: { opacity: 0, x: 18 },
   animate: { opacity: 1, x: 0 },
   exit: { opacity: 0, x: -14 },
-  transition: { duration: 0.42, ease },
+  transition: { duration: 0.24, ease },
 };
 
 export const sectionList = {
