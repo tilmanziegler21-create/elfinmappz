@@ -99,6 +99,52 @@ test("одна фотография товара не листается", async
   expect(before && after && Math.abs(before.height - after.height)).toBeLessThan(1);
 });
 
+test("фото линейки остаётся при смене вкуса", async ({ page }) => {
+  await page.route("**/api/config", async (route) => {
+    const response = await route.fetch();
+    const json = await response.json();
+    json.catalog = "sheets";
+    await route.fulfill({ response, json });
+  });
+  await page.route("**/api/catalog**", (route) => route.fulfill({
+    json: {
+      source: "sheets",
+      products: [
+        { id: "1", sku: "LQ-1", name: "Blackberry Lemon", category: "liquids", brand: "ELFLIQ", price: 18, stock: 6, active: true },
+        { id: "2", sku: "LQ-2", name: "Blue Razz Ice", category: "liquids", brand: "ELFLIQ", price: 19, stock: 3, active: true },
+        { id: "3", sku: "CH-1", name: "Turbo Mint", category: "liquids1", brand: "CHASER", price: 20, stock: 4, active: true },
+        { id: "4", sku: "HQ-1", name: "Grapey", category: "liquids", brand: "HQD", price: 17, stock: 2, active: true },
+        { id: "5", sku: "VZ-1", name: "Strawberry Ice", category: "liquids", brand: "VOZOL", price: 21, stock: 5, active: true },
+      ],
+    },
+  }));
+  await openShop(page);
+  await expect(page.getByText("Нет фото этого вкуса")).toHaveCount(0);
+  const lines = [
+    [/ELFLIQ/, "/products/elfliq-watermelon.png"],
+    [/CHASER/, "/assets/products/liquids/chaser-lux-turbo-mint.png"],
+    [/HQD/, "/assets/products/liquids/hqd-grapey.png"],
+    [/VOZOL/, "/assets/products/liquids/vozol-strawberry-ice.png"],
+  ] as const;
+  for (const [name, src] of lines) {
+    await page.getByRole("button", { name }).first().click();
+    const image = page.locator(".hero-scene img");
+    await expect(image).toHaveCount(1);
+    await expect(image).toHaveAttribute("src", src);
+    await expect(page.getByText("Нет фото этого вкуса")).toHaveCount(0);
+    await expect(page.getByRole("tablist", { name: "Изображения" })).toHaveCount(0);
+    await page.getByRole("button", { name: "Назад в каталог" }).click();
+  }
+  await page.getByRole("button", { name: /ELFLIQ/ }).first().click();
+  const image = page.locator(".hero-scene img");
+  await page.getByRole("button", { name: "Выбрать вкус" }).click();
+  await page.getByRole("option", { name: /Blue Razz Ice/ }).click();
+  await expect(image).toHaveAttribute("src", "/products/elfliq-watermelon.png");
+  await expect(page.locator(".product-kicker")).toHaveText("Blue Razz Ice");
+  await expect(page.getByText("19,00").first()).toBeVisible();
+  await expect(page.locator(".hero-scene img")).toHaveCount(1);
+});
+
 test("характеристики на 320 не остаются под кнопкой", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 700 });
   await openShop(page);

@@ -4,7 +4,7 @@ import { CountBump } from "./CountBump";
 import { preloadImages } from "./ImagePreloader";
 import { sectionLabel } from "./categoryRules";
 import { ProductFloatStage } from "./ProductFloatStage";
-import { depictedMediaId, mediaByBrand, mediaBySku, mediaFor, photoMatchesFlavor } from "./productMedia";
+import { mediaByBrand, mediaBySku, mediaFor } from "./productMedia";
 import { VariantBottomSheet } from "./VariantBottomSheet";
 import { addPulse, liteMotion, productTap } from "./productMotion";
 import {
@@ -116,13 +116,8 @@ export function ProductScreen({
   const variant = current.variants.find((item) => item.id === variantId) ?? null;
   const flavorChoice = current.variants.some((item) => item.label !== "—" && !/\d+\s*мл/i.test(item.label))
     && !current.variants.some((item) => /\d+\s*мл/i.test(item.label));
-  const ownMedia = mediaFor(current.id) ?? mediaBySku(current.id);
-  const flavorText = flavorChoice ? (variant?.label ?? current.flavor) : `${current.flavor} ${current.name}`;
-  const brandId = depictedMediaId(current.brand || current.name);
-  const brandMedia = mediaByBrand(current.brand || current.name);
-  const brandPhoto = !ownMedia && brandId && current.heroImage && photoMatchesFlavor(brandId, flavorText) ? current.heroImage : undefined;
-  const heroImage = ownMedia?.image ?? brandPhoto;
-  const media = ownMedia ?? (heroImage ? brandMedia : null);
+  const media = mediaFor(current.id) ?? mediaBySku(current.id) ?? mediaByBrand(current.brand || current.name);
+  const heroImage = media?.image ?? current.heroImage;
   const preset = media?.scene ?? (current.id === "elfliq-watermelon" ? "liquid-float" as const : undefined);
   const accent = media?.accent ?? (current.id === "elfliq-watermelon" ? "melon" as const : undefined);
   const inCart = variant ? cart[lineKey(product.id, variant.id)] ?? 0 : 0;
@@ -164,16 +159,13 @@ export function ProductScreen({
           {!ready ? <div className="skel hero-skel" /> : (
             <ProductFloatStage
               image={heroImage}
-              label={flavorChoice ? (variant?.label ?? current.name) : current.name}
-              frameKey={heroImage ?? current.id}
+              label={current.name}
+              frameKey={current.id}
               lite={lite}
               preset={preset}
               accent={accent}
             >
-              <span className="hero-missing">
-                <ProductMark category={current.category} frame={0} />
-                <span className="mark-note">Нет фото этого вкуса</span>
-              </span>
+              <ProductMark category={current.category} frame={0} />
             </ProductFloatStage>
           )}
         </motion.div>
