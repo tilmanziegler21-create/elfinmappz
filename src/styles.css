@@ -25,8 +25,7 @@
 }
 
 html,
-body,
-#root {
+body {
   height: 100%;
 }
 
@@ -57,7 +56,12 @@ button {
 
 #root {
   width: min(100vw, 430px);
-  height: var(--app-height, 100dvh);
+  height: var(--app-height, var(--tg-viewport-stable-height, 100dvh));
+  max-height: var(--app-height, var(--tg-viewport-stable-height, 100dvh));
+  padding-top: calc(var(--tg-safe-area-inset-top, env(safe-area-inset-top, 0px)) + var(--tg-content-safe-area-inset-top, 0px));
+  padding-right: calc(var(--tg-safe-area-inset-right, env(safe-area-inset-right, 0px)) + var(--tg-content-safe-area-inset-right, 0px));
+  padding-bottom: calc(var(--tg-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)) + var(--tg-content-safe-area-inset-bottom, 0px));
+  padding-left: calc(var(--tg-safe-area-inset-left, env(safe-area-inset-left, 0px)) + var(--tg-content-safe-area-inset-left, 0px));
   position: relative;
   overflow: hidden;
   background:
@@ -75,6 +79,7 @@ button {
 .stage {
   height: 100%;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   position: relative;
@@ -281,6 +286,25 @@ button {
   min-height: 68px;
 }
 
+@media (max-height: 560px) {
+  .stage[data-compact="true"] .elf-stage {
+    width: 44px;
+    height: 44px;
+  }
+
+  .stage[data-compact="true"] .titles {
+    min-height: 0;
+  }
+
+  .stage[data-compact="true"] .brand-mark {
+    font-size: 28px;
+  }
+
+  .stage[data-compact="true"] .toprow {
+    padding-top: 8px;
+  }
+}
+
 .stage[data-compact="true"] .ring-b,
 .stage[data-compact="true"] .mist,
 .stage[data-compact="true"] .elf-hair,
@@ -405,7 +429,7 @@ button {
   flex-direction: column;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 4px 20px calc(104px + env(safe-area-inset-bottom));
+  padding: 4px 20px 12px;
 }
 
 .stage[data-nav="false"] .body {
@@ -987,7 +1011,7 @@ a.btn {
   z-index: 25;
   display: flex;
   align-items: flex-end;
-  padding: 16px 16px calc(88px + env(safe-area-inset-bottom));
+  padding: 16px;
 }
 
 .terms-scrim {
@@ -1069,8 +1093,8 @@ a.btn {
   min-height: 0;
   overflow: hidden;
   height: auto;
-  max-height: min(88dvh, calc(var(--app-height, 100dvh) - 24px - var(--keyboard-inset, 0px)));
-  padding: 6px 14px calc(10px + var(--safe-bottom, env(safe-area-inset-bottom)));
+  max-height: calc(var(--app-height, var(--tg-viewport-stable-height, 100dvh)) - var(--tg-safe-area-inset-top, env(safe-area-inset-top, 0px)) - var(--tg-content-safe-area-inset-top, 0px) - var(--tg-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)) - var(--tg-content-safe-area-inset-bottom, 0px));
+  padding: 6px 14px 10px;
   border-radius: 30px 30px 0 0;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), #eef5fb);
   box-shadow: 0 -12px 32px rgba(18, 58, 109, 0.12);
@@ -1623,11 +1647,10 @@ a.btn {
 }
 
 .nav {
-  position: absolute;
+  position: relative;
   z-index: 5;
-  left: 12px;
-  right: 12px;
-  bottom: calc(8px + var(--safe-bottom, env(safe-area-inset-bottom)));
+  flex: none;
+  margin: 0 12px 8px;
   height: 68px;
   padding: 4px;
   display: grid;
@@ -1804,7 +1827,7 @@ a.btn {
   grid-template-columns: 44px 1fr 44px;
   align-items: center;
   gap: 8px;
-  padding: calc(10px + env(safe-area-inset-top)) 16px 8px;
+  padding: 10px 16px 8px;
 }
 
 .back-btn,
@@ -2177,11 +2200,12 @@ a.btn {
 .sheet {
   width: 100%;
   min-height: 0;
-  max-height: min(94%, calc(var(--app-height, 100dvh) - var(--keyboard-inset, 0px) - 12px));
+  max-height: calc(var(--app-height, var(--tg-viewport-stable-height, 100dvh)) - var(--tg-safe-area-inset-top, env(safe-area-inset-top, 0px)) - var(--tg-content-safe-area-inset-top, 0px) - var(--tg-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)) - var(--tg-content-safe-area-inset-bottom, 0px) - 12px);
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 10px 16px calc(16px + var(--safe-bottom, env(safe-area-inset-bottom)));
+  padding: 10px 16px 16px;
   border-radius: 22px 22px 0 0;
   background: #f4f8fb;
   box-shadow: 0 -16px 40px rgba(18, 58, 109, 0.12);
@@ -2220,6 +2244,7 @@ a.btn {
 }
 
 .sheet-list {
+  flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
   display: flex;
@@ -2347,7 +2372,7 @@ a.btn {
 .product-action {
   position: relative;
   flex: none;
-  padding: 8px 12px calc(12px + env(safe-area-inset-bottom));
+  padding: 8px 12px 12px;
 }
 
 .product-buy {
@@ -2802,7 +2827,7 @@ a.btn {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding-bottom: max(8px, env(safe-area-inset-bottom));
+  padding-bottom: 8px;
 }
 
 .checkout-note {

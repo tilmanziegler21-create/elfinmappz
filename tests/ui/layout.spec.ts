@@ -76,12 +76,12 @@ test("оформление и нижний бар не съезжают", async 
   await expect(page.getByRole("button", { name: "Подтвердить заказ" })).toBeVisible();
   await page.screenshot({ path: "artifacts/qa/screenshots/checkout-error.png" });
 
-  await page.evaluate(() => document.documentElement.style.setProperty("--keyboard-inset", "280px"));
+  await page.evaluate(() => document.documentElement.style.setProperty("--app-height", "564px"));
   const button = await page.getByRole("button", { name: "Подтвердить заказ" }).boundingBox();
   expect(button).toBeTruthy();
-  expect((button?.y ?? 9999) + (button?.height ?? 0)).toBeLessThanOrEqual(844);
+  expect((button?.y ?? 9999) + (button?.height ?? 0)).toBeLessThanOrEqual(564);
   await page.screenshot({ path: "artifacts/qa/screenshots/checkout-keyboard.png" });
-  await page.evaluate(() => document.documentElement.style.removeProperty("--keyboard-inset"));
+  await page.evaluate(() => document.documentElement.style.removeProperty("--app-height"));
 
   await page.getByRole("button", { name: "Закрыть", exact: true }).click();
   await expect(page.locator(".sheet-layer")).toBeHidden();
