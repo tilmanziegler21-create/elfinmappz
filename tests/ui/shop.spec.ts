@@ -25,6 +25,8 @@ test("возраст: отказ, возврат и вход", async ({ page }) 
   await page.getByRole("button", { name: "Вернуться" }).click();
   await page.getByRole("button", { name: "Мне есть 18" }).click();
   await expect(page.getByText("Всё в одном месте")).toBeVisible();
+  await expect(page.getByText("Уровень покупателя")).toHaveCount(0);
+  await expect(page.getByText("−5%")).toHaveCount(0);
 });
 
 test("условия закрываются фоном и кнопкой", async ({ page }) => {
@@ -80,8 +82,34 @@ test("одна фотография товара не листается", async
   await expect(page.getByRole("tablist", { name: "Изображения" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Грань" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Общий вид" })).toHaveCount(0);
+  await expect(scene).toHaveAttribute("data-frames", "1");
+  const image = scene.locator("img");
+  await expect(image).toHaveCount(1);
+  const src = await image.getAttribute("src");
+  const box = await scene.boundingBox();
+  if (box) {
+    await page.mouse.move(box.x + 24, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width - 24, box.y + box.height / 2, { steps: 10 });
+    await page.mouse.up();
+  }
+  await expect(image).toHaveCount(1);
+  await expect(image).toHaveAttribute("src", src ?? "");
   const after = await scene.boundingBox();
   expect(before && after && Math.abs(before.height - after.height)).toBeLessThan(1);
+});
+
+test("характеристики на 320 не остаются под кнопкой", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 700 });
+  await openShop(page);
+  await page.getByRole("button", { name: /ELFLIQ/ }).first().click();
+  const fact = page.locator(".facts .fact").last();
+  const buy = page.getByRole("button", { name: /В корзину/ });
+  await fact.scrollIntoViewIfNeeded();
+  const factBox = await fact.boundingBox();
+  const buyBox = await buy.boundingBox();
+  expect(factBox && buyBox).toBeTruthy();
+  expect(factBox!.y + factBox!.height).toBeLessThanOrEqual(buyBox!.y + 1);
 });
 
 test("поиск объёма фильтрует список и возвращает его", async ({ page }) => {
@@ -359,10 +387,11 @@ test("без входа оформление называет Telegram и не �
   await openShop(page);
   await page.getByRole("navigation", { name: "Разделы" }).getByRole("button", { name: "Корзина" }).click();
   await page.getByRole("button", { name: "К оформлению" }).click();
-  await page.getByRole("button", { name: "Подтвердить заказ" }).click();
-  await expect(page.getByRole("alert")).toContainText("Откройте магазин через Telegram, чтобы подтвердить заказ.");
-  await page.getByRole("button", { name: "Подтвердить заказ" }).click();
-  await expect(page.getByRole("alert")).toContainText("Откройте магазин через Telegram, чтобы подтвердить заказ.");
+  const confirm = page.getByRole("button", { name: "Подтвердить заказ" });
+  await expect(confirm).toBeDisabled();
+  await expect(page.getByText("Откройте магазин через Telegram, чтобы подтвердить заказ.")).toBeVisible();
+  await confirm.click({ force: true });
+  await expect(confirm).toBeDisabled();
   expect(await page.evaluate(() => localStorage.getItem("elfin-cart"))).toContain("elfliq-watermelon:30");
 });
 

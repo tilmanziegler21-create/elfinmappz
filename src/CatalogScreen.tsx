@@ -324,7 +324,14 @@ function ProductArt({ item }: { item: Product }) {
     const node = image.current;
     if (node?.complete && node.naturalWidth > 0) setLoaded(true);
   }, [item.catalogImage]);
-  if (!item.catalogImage || failed) return <span className="mark" aria-hidden="true" />;
+  if (!item.catalogImage || failed) {
+    return (
+      <span className="mark-fallback">
+        <span className="mark" aria-hidden="true" />
+        <span className="mark-note">Нет фото</span>
+      </span>
+    );
+  }
   return (
     <img
       ref={image}

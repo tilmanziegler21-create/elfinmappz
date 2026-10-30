@@ -62,6 +62,7 @@ export function CheckoutScreen({
   const [writeCourier, setWriteCourier] = useState<{ url?: string; start?: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const signedOut = !verified && (!token || authPhase === "expired" || authPhase === "error" || authFailed);
+  const telegramGate = !(Boolean(user.tgId) && !signedOut);
 
   function chooseCourier(id: string) {
     const next = couriers.find((item) => item.courier_id === id);
@@ -80,7 +81,7 @@ export function CheckoutScreen({
 
   async function submit() {
     if (busy || phase !== "form") return;
-    if (!token || authPhase === "expired" || authPhase === "error") {
+    if (telegramGate) {
       reportCheckout(!token ? "NO_BEARER" : "AUTH_PHASE");
       setError(authFailed || authPhase === "expired" || authPhase === "error"
         ? "Не удалось подтвердить вход через Telegram. Откройте приложение заново."
@@ -300,8 +301,8 @@ export function CheckoutScreen({
           type="button"
           className="btn btn-primary"
           onClick={submit}
-          disabled={busy}
-          whileTap={reduce || busy ? undefined : { scale: 0.97 }}
+          disabled={busy || telegramGate}
+          whileTap={reduce || busy || telegramGate ? undefined : { scale: 0.97 }}
           transition={tapSpring}
         >
           Подтвердить заказ

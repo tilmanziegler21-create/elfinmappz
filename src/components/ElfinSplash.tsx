@@ -7,6 +7,7 @@ const WORD = "ELFIN MARKET";
 export function ElfinSplash({
   phase,
   progress,
+  warm,
   onRetry,
   onHidden,
 }: {
@@ -22,10 +23,10 @@ export function ElfinSplash({
   const shown = phase === "ready" ? 100 : Math.min(progress, 99);
 
   useEffect(() => {
-    const wait = reduce ? 160 : 2300;
+    const wait = reduce ? 160 : warm ? 420 : 1100;
     const id = window.setTimeout(() => setIntroDone(true), wait);
     return () => window.clearTimeout(id);
-  }, [reduce]);
+  }, [reduce, warm]);
 
   useEffect(() => {
     if (!introDone || phase !== "ready") return;
@@ -40,7 +41,7 @@ export function ElfinSplash({
 
   return (
     <div
-      className="splash"
+      className={warm ? "splash is-warm" : "splash"}
       style={leaving ? { opacity: 0, transition: "opacity 0.42s cubic-bezier(0.22, 1, 0.36, 1)" } : undefined}
       role="status"
       aria-live="polite"

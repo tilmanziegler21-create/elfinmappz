@@ -30,17 +30,30 @@ export function mediaBySku(sku: string): MediaEntry | null {
   return valid(entry) ? entry : null;
 }
 
-const brandMedia: Array<{ test: (brand: string) => boolean; id: string }> = [
-  { test: (brand) => brand.startsWith("ELFLIQ"), id: "elfliq-watermelon" },
-  { test: (brand) => brand.startsWith("CHASER") && (brand.includes("F/P") || brand.includes("FP")), id: "chaser-fp-cherry" },
-  { test: (brand) => brand.startsWith("CHASER"), id: "chaser-lux-turbo-mint" },
-  { test: (brand) => brand.startsWith("HQD"), id: "hqd-grapey" },
-  { test: (brand) => brand.startsWith("VOZOL"), id: "vozol-strawberry-ice" },
-  { test: (brand) => brand.includes("XROS 5"), id: "xros-5-mini" },
+const brandMedia: Array<{ test: (brand: string) => boolean; id: string; flavors: string[] }> = [
+  { test: (brand) => brand.startsWith("ELFLIQ"), id: "elfliq-watermelon", flavors: ["watermelon", "арбуз"] },
+  { test: (brand) => brand.startsWith("CHASER") && (brand.includes("F/P") || brand.includes("FP")), id: "chaser-fp-cherry", flavors: ["cherry", "вишня"] },
+  { test: (brand) => brand.startsWith("CHASER"), id: "chaser-lux-turbo-mint", flavors: ["turbo mint"] },
+  { test: (brand) => brand.startsWith("HQD"), id: "hqd-grapey", flavors: ["grapey"] },
+  { test: (brand) => brand.startsWith("VOZOL"), id: "vozol-strawberry-ice", flavors: ["strawberry", "клубник"] },
+  { test: (brand) => brand.includes("XROS 5"), id: "xros-5-mini", flavors: [] },
 ];
 
 export function mediaByBrand(brand: string): MediaEntry | null {
   const value = brand.trim().toUpperCase().replace(/\s+/g, " ");
   const match = brandMedia.find((item) => item.test(value));
   return match ? mediaFor(match.id) : null;
+}
+
+export function depictedMediaId(brand: string): string | null {
+  const value = brand.trim().toUpperCase().replace(/\s+/g, " ");
+  return brandMedia.find((item) => item.test(value))?.id ?? null;
+}
+
+export function photoMatchesFlavor(mediaId: string, flavor: string): boolean {
+  const item = brandMedia.find((entry) => entry.id === mediaId);
+  if (!item) return false;
+  if (item.flavors.length === 0) return true;
+  const value = flavor.trim().toLowerCase();
+  return item.flavors.some((token) => value.includes(token));
 }

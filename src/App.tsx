@@ -10,7 +10,6 @@ import { CartScreen } from "./CartScreen";
 import { Catalog } from "./CatalogScreen";
 import { shopSection } from "./categoryRules";
 import { CheckoutScreen } from "./CheckoutScreen";
-import { LoyaltyProgress } from "./LoyaltyProgress";
 import { CourierScreen } from "./CourierScreen";
 import { OrdersScreen } from "./OrdersScreen";
 import { CountBump } from "./CountBump";
@@ -463,10 +462,10 @@ export function App() {
           <motion.div
             key={age === "ok" ? screen : age}
             className="titles"
-            initial={reduce ? false : { opacity: 0, y: 8 }}
+            initial={reduce ? false : { opacity: 1, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={reduce ? undefined : { opacity: 0, y: -6 }}
-            transition={{ duration: 0.28, ease }}
+            exit={reduce ? undefined : { opacity: 1, y: -4 }}
+            transition={{ duration: 0.16, ease }}
           >
             <p className="kicker">{header.kicker}</p>
             <h1 className="brand-mark" data-long={header.title.length > 6 ? "true" : "false"}>
@@ -507,10 +506,10 @@ export function App() {
           ) : (
             <motion.section
               key={view}
-              className={view === "home" || view === "catalog" || view === "product" ? "panel panel-home" : view === "cart" || view === "checkout" || view === "orders" || view === "courier" || view === "admin" ? "panel panel-cart" : "panel"}
+              className={view === "home" || view === "catalog" || view === "product" || view === "profile" ? "panel panel-home" : view === "cart" || view === "checkout" || view === "orders" || view === "courier" || view === "admin" ? "panel panel-cart" : "panel"}
               {...soft}
             >
-              {view === "home" ? <Home onOpen={setScreen} onProduct={openProduct} onCart={() => setScreen("cart")} cartCount={cartCount} token={session?.token ?? null} city={shopCity} shelf={catalogMode === "live" ? liveProducts.slice(0, 4) : []} live={catalogMode === "live"} /> : null}
+              {view === "home" ? <Home onOpen={setScreen} onProduct={openProduct} onCart={() => setScreen("cart")} cartCount={cartCount} shelf={catalogMode === "live" ? liveProducts.slice(0, 4) : []} live={catalogMode === "live"} /> : null}
               {view === "catalog" ? (
                 <Catalog
                   mode={catalogMode}
@@ -677,8 +676,6 @@ function Home({
   onProduct,
   onCart,
   cartCount,
-  token,
-  city,
   shelf,
   live,
 }: {
@@ -686,8 +683,6 @@ function Home({
   onProduct: (id: string) => void;
   onCart: () => void;
   cartCount: number;
-  token: string | null;
-  city: string;
   shelf: Product[];
   live: boolean;
 }) {
@@ -726,9 +721,6 @@ function Home({
           Подробнее об условиях
         </button>
       </motion.section>
-      <motion.div variants={sectionItem}>
-        <LoyaltyProgress token={token} city={city} />
-      </motion.div>
       <motion.div className="catalog home-vitrine" variants={sectionItem}>
         <div className="home-shelf-head">
           <h2>Каталог {live ? null : <span className="home-demo">DEMO</span>}</h2>
@@ -779,7 +771,16 @@ function HomeArt({ item }: { item: Product }) {
     const node = image.current;
     if (node?.complete && node.naturalWidth > 0) setLoaded(true);
   }, [item.catalogImage]);
-  if (!item.catalogImage || failed) return <span className="product-art"><span className="mark" aria-hidden="true" /></span>;
+  if (!item.catalogImage || failed) {
+    return (
+      <span className="product-art">
+        <span className="mark-fallback">
+          <span className="mark" aria-hidden="true" />
+          <span className="mark-note">Нет фото</span>
+        </span>
+      </span>
+    );
+  }
   return (
     <span className="product-art">
       <img

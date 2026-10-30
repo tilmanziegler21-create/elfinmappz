@@ -4,7 +4,7 @@ import { CountBump } from "./CountBump";
 import { preloadImages } from "./ImagePreloader";
 import { sectionLabel } from "./categoryRules";
 import { ProductFloatStage } from "./ProductFloatStage";
-import { mediaByBrand, mediaBySku, mediaFor } from "./productMedia";
+import { depictedMediaId, mediaByBrand, mediaBySku, mediaFor, photoMatchesFlavor } from "./productMedia";
 import { VariantBottomSheet } from "./VariantBottomSheet";
 import { addPulse, liteMotion, productTap } from "./productMotion";
 import {
@@ -113,12 +113,18 @@ export function ProductScreen({
   }
 
   const current = product;
+  const variant = current.variants.find((item) => item.id === variantId) ?? null;
   const flavorChoice = current.variants.some((item) => item.label !== "—" && !/\d+\s*мл/i.test(item.label))
     && !current.variants.some((item) => /\d+\s*мл/i.test(item.label));
-  const media = mediaFor(current.id) ?? mediaBySku(current.id) ?? mediaByBrand(current.brand || current.name);
+  const ownMedia = mediaFor(current.id) ?? mediaBySku(current.id);
+  const flavorText = flavorChoice ? (variant?.label ?? current.flavor) : `${current.flavor} ${current.name}`;
+  const brandId = depictedMediaId(current.brand || current.name);
+  const brandMedia = mediaByBrand(current.brand || current.name);
+  const brandPhoto = !ownMedia && brandId && current.heroImage && photoMatchesFlavor(brandId, flavorText) ? current.heroImage : undefined;
+  const heroImage = ownMedia?.image ?? brandPhoto;
+  const media = ownMedia ?? (heroImage ? brandMedia : null);
   const preset = media?.scene ?? (current.id === "elfliq-watermelon" ? "liquid-float" as const : undefined);
   const accent = media?.accent ?? (current.id === "elfliq-watermelon" ? "melon" as const : undefined);
-  const variant = current.variants.find((item) => item.id === variantId) ?? null;
   const inCart = variant ? cart[lineKey(product.id, variant.id)] ?? 0 : 0;
   const remaining = variant ? Math.max(0, variant.stock - inCart) : 0;
   const blocked = !variant || variant.availability === "out" || remaining <= 0;
@@ -147,6 +153,7 @@ export function ProductScreen({
           data-lite={lite ? "true" : "false"}
           data-scene={preset}
           data-accent={accent ?? "ice"}
+          data-frames="1"
           initial={reduce ? false : { opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.42, ease }}
@@ -156,14 +163,17 @@ export function ProductScreen({
           <span className="hero-gem hero-gem-b" />
           {!ready ? <div className="skel hero-skel" /> : (
             <ProductFloatStage
-              image={current.heroImage}
-              label={current.name}
-              frameKey={current.id}
+              image={heroImage}
+              label={flavorChoice ? (variant?.label ?? current.name) : current.name}
+              frameKey={heroImage ?? current.id}
               lite={lite}
               preset={preset}
               accent={accent}
             >
-              <ProductMark category={current.category} frame={0} />
+              <span className="hero-missing">
+                <ProductMark category={current.category} frame={0} />
+                <span className="mark-note">Нет фото этого вкуса</span>
+              </span>
             </ProductFloatStage>
           )}
         </motion.div>
