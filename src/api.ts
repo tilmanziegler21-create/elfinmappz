@@ -27,6 +27,7 @@ export type ApiCourier = {
 
 export type ApiOrder = {
   orderId: string;
+  displayNumber?: number | null;
   status: string;
   totalAmount: number;
   finalAmount: number | null;
@@ -36,11 +37,12 @@ export type ApiOrder = {
   place: string;
   comment: string;
   courierId: string;
+  username?: string;
+  handle?: string;
   writeCourier?: { url?: string; start?: string };
-  lines: { name: string; variant: string; qty: number }[];
+  lines: { name: string; variant: string; qty: number; brand?: string; text?: string }[];
   units: number;
   customerName?: string;
-  username?: string;
   tgId?: string;
   phone?: string;
   payout?: number;

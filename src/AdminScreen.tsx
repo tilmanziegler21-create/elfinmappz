@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, customerStatus, type ApiOrder } from "./api";
+import { orderNumber } from "./lineLabel";
 
 const nextStep: Record<string, { status: string; label: string } | undefined> = {
   pending: { status: "assigned", label: "Назначить курьера" },
@@ -56,7 +57,8 @@ export function AdminScreen({ token, city }: { token: string; city: string }) {
         return (
           <article key={order.orderId} className="order-card">
             <div className="order-head">
-              <h2>Заказ {order.orderId}</h2>
+              <h2>Заказ {orderNumber(order)}</h2>
+              <p className="cart-caption">{order.orderId}</p>
               <span className={`order-status is-${order.status}`}>{customerStatus[order.status] || order.status}</span>
             </div>
             <p>{order.place || "Без адреса"} · {order.time || "без времени"}</p>

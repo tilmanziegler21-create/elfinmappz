@@ -193,6 +193,11 @@ try {
   assert(merged.state.orders.A.status === "pending" && merged.state.orders.B.status === "buffer", "both orders kept");
   assert(merged.state.reservations.length === 1 && merged.state.reservations[0].released === true, "released reservation stays released");
   assert(merged.sheet.products[0].stock === 7, "stale higher stock does not overwrite the sale");
+  const numbered = mergeSnapshots(
+    wrap(fullState({ orders: { A: { id: "A", status: "pending", display_number: 1004 } } })),
+    wrap(fullState({ orders: { A: { id: "A", status: "buffer", display_number: 1001 } } })),
+  );
+  assert(numbered.state.orders.A.display_number === 1001 && numbered.state.orders.A.status === "pending", "assigned display number stays the earlier one");
   const delivered = mergeSnapshots(
     wrap(fullState({ orders: { A: { id: "A", status: "pending" } } })),
     wrap(fullState({ orders: { A: { id: "A", status: "delivered", delivered_at: "2026-01-02T00:00:00.000Z" } } })),
@@ -239,6 +244,7 @@ async function resetDatabase(client) {
     revision bigint NOT NULL DEFAULT 0
   )`);
   await client.query("DELETE FROM elfin_state");
+  await client.query("DROP TABLE IF EXISTS elfin_display_counter");
 }
 
 function legacyPayload() {
@@ -388,9 +394,14 @@ async function runIntegration() {
       body: { city: "HH", items: [{ productId: "north:10", quantity: 1, variant: "10 мл" }] },
     });
     assert(created.status === 200 && again.data.orderId === created.data.orderId, "same checkout key");
+    assert(created.data.displayNumber === 1002 && again.data.displayNumber === 1002, "display number is stable");
     const afterIdem = await mainShape(client);
     const storedIds = Object.keys(afterIdem.payload.state.orders);
     assert(storedIds.includes(created.data.orderId) && storedIds.includes("ORD-LEGACY"), "create stored and legacy remains");
+    assert(afterIdem.payload.state.orders["ORD-LEGACY"].display_number === 1001, "legacy order numbered once");
+    assert(afterIdem.payload.state.orders[created.data.orderId].display_number === 1002, "new order number stored");
+    const storedItem = afterIdem.payload.state.items.find((item) => item.order_id === created.data.orderId);
+    assert(storedItem.brand === "ELFIN" && storedItem.name === "Северный" && storedItem.variant === "10 мл", "brand snapshot stored");
     assert(storedIds.length === 2, "idempotent checkout did not insert a second order");
     const held = afterIdem.payload.state.reservations.filter((item) => item.order_id === created.data.orderId && item.released === false);
     assert(held.length === 1 && held[0].product_id === "north:10", "reservation stored");
@@ -412,6 +423,7 @@ async function runIntegration() {
       }),
     ]);
     assert(left.status === 200 && right.status === 200 && left.data.orderId !== right.data.orderId, "concurrent creates");
+    assert(left.data.displayNumber !== right.data.displayNumber, "concurrent display numbers differ");
     const concurrent = await mainShape(client);
     assert(concurrent.payload.state.orders[left.data.orderId] && concurrent.payload.state.orders[right.data.orderId], "both concurrent orders stored");
     record("G-http", true, "two concurrent order requests");
@@ -434,6 +446,7 @@ async function runIntegration() {
     const note = placed.payload.state.notices.find((item) => item.order_id === created.data.orderId);
     assert(placedOrder.courier_id === "courier-north", "courier assigned");
     assert(note && note.sent === false && note.status === "blocked" && note.last_error === "TEST_RECIPIENT_BLOCKED", "notice blocked before Telegram");
+    assert(note.text.includes("#1002") && note.text.includes("@customer_example") && note.text.includes("ELFIN — Северный") && !note.text.includes("Северный · "), "notice shows number, username and brand once");
     const confirmedAgain = await call(port, "/api/order/confirm", {
       method: "POST",
       token: customer.data.token,
@@ -505,6 +518,7 @@ async function runIntegration() {
     assert(ids.includes(created.data.orderId) && ids.includes(deliveredOrder.data.orderId), "orders survive restart");
     const persisted = await mainShape(client);
     assert(persisted.payload.state.orders[created.data.orderId] && persisted.payload.state.orders["ORD-LEGACY"], "postgres still has both orders");
+    assert(persisted.payload.state.orders[created.data.orderId].display_number === 1002 && persisted.payload.state.orders["ORD-LEGACY"].display_number === 1001, "display numbers survive restart");
     assert(persisted.payload.state.schemaVersion === 1 && persisted.payload.state.users["424242"], "legacy user survived restart");
     const backupCount = await client.query("SELECT count(*)::int AS count FROM elfin_state WHERE id LIKE 'backup-%'");
     assert(backupCount.rows[0].count === 1, "restart did not add another backup");

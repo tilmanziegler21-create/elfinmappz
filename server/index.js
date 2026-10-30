@@ -27,6 +27,8 @@ import { clearHamburgCache, readHamburgSources } from "./hhRead.js";
 import { hhTabReport, listSheetTitles, loadServiceAccount, sheetCode, sheetTabs, spreadsheetMeta } from "./sheetsRead.js";
 import { withMedia } from "./productMedia.js";
 import { bindNoticeRecipient, enqueueNotice, telegramTestMode, trySendNotice } from "./notices.js";
+import { allocateDisplayNumbers } from "./pgState.js";
+import { customerHandle, formatLine, orderNumber } from "./lineLabel.js";
 import { httpsUrl, onceUpdate } from "./bot.js";
 import { language } from "./botCopy.js";
 import { configureBot, dispatchUpdate, runPolling, telegramProbeState } from "./botPoll.js";
@@ -378,9 +380,73 @@ function money(value) {
   return Math.round(Number(value || 0) * 100) / 100;
 }
 
+let fileClaim = Promise.resolve();
+let reservedDisplay = 1000;
+
+function maxDisplayNumber() {
+  let max = 1000;
+  for (const order of Object.values(db().orders || {})) {
+    const n = Number(order?.display_number);
+    if (Number.isInteger(n) && n > max) max = n;
+  }
+  return max;
+}
+
+function claimFileDisplayNumber() {
+  const run = fileClaim.then(() => {
+    reservedDisplay = Math.max(reservedDisplay, maxDisplayNumber()) + 1;
+    return reservedDisplay;
+  });
+  fileClaim = run.then(() => undefined, () => undefined);
+  return run;
+}
+
+async function claimDisplayNumber() {
+  if (String(process.env.DATABASE_URL || "").trim()) {
+    const numbers = await allocateDisplayNumbers(1, maxDisplayNumber());
+    if (numbers?.[0]) return numbers[0];
+  }
+  return claimFileDisplayNumber();
+}
+
+async function backfillDisplayNumbers() {
+  const missing = Object.values(db().orders || {})
+    .filter((order) => order?.id && !(Number.isInteger(Number(order.display_number)) && Number(order.display_number) >= 1001))
+    .sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")) || String(a.id).localeCompare(String(b.id)));
+  if (!missing.length) {
+    if (String(process.env.DATABASE_URL || "").trim()) await allocateDisplayNumbers(0, maxDisplayNumber());
+    return;
+  }
+  if (String(process.env.DATABASE_URL || "").trim()) {
+    const numbers = await allocateDisplayNumbers(missing.length, maxDisplayNumber());
+    if (numbers) missing.forEach((order, index) => { order.display_number = numbers[index]; });
+    else for (const order of missing) order.display_number = await claimFileDisplayNumber();
+  } else {
+    for (const order of missing) order.display_number = await claimFileDisplayNumber();
+  }
+  await persist();
+}
+
+function brandForSku(sku) {
+  const row = workbook().products.find((product) => product.sku === String(sku || ""));
+  return String(row?.brand || "").trim();
+}
+
+function lineView(item) {
+  const brand = String(item.brand || "").trim() || brandForSku(item.productId);
+  return {
+    brand,
+    name: item.name,
+    variant: item.variant || "",
+    quantity: item.quantity,
+  };
+}
+
 function customerOrder(order) {
+  const display = Number(order.display_number);
   return {
     orderId: order.id,
+    displayNumber: Number.isInteger(display) && display >= 1001 ? display : null,
     status: normalizeStatus(order.status),
     totalAmount: order.total_amount,
     finalAmount: order.final_amount ?? null,
@@ -390,12 +456,19 @@ function customerOrder(order) {
     place: order.delivery_address || "",
     comment: order.comment || "",
     courierId: order.courier_id || "",
+    username: publicUsername(order.username),
+    handle: customerHandle(order.username),
     writeCourier: writeCourierFor(courierById(order.courier_id), order.id),
-    lines: orderItems(order.id).map((item) => ({
-      name: item.name,
-      variant: item.variant,
-      qty: item.quantity,
-    })),
+    lines: orderItems(order.id).map((item) => {
+      const view = lineView(item);
+      return {
+        name: view.name,
+        variant: view.variant,
+        qty: Number(view.quantity),
+        brand: view.brand,
+        text: formatLine(view).text,
+      };
+    }),
     units: orderItems(order.id).reduce((sum, item) => sum + Number(item.quantity), 0),
   };
 }
@@ -438,10 +511,11 @@ async function notifyCourier(order, courier = courierById(order.courier_id), req
     orderTrace(requestId, "COURIER_TG_ID_PRESENT", presence);
   }
   const html = (value) => String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  const lines = orderItems(order.id).map((item) => `• ${html(item.name)}${item.variant ? ` · ${html(item.variant)}` : ""} × ${html(item.quantity)}`);
+  const lines = orderItems(order.id).map((item) => `• ${html(formatLine(lineView(item)).text)}`);
   const statusLabel = { pending: "Ожидает подтверждения", assigned: "Назначен", picked_up: "В пути", delivered: "Выдан", cancelled: "Отменён" }[normalizeStatus(order.status)] || "Ожидает подтверждения";
   const text = [
-    `📦 <b>Заказ ${html(order.id)}</b>`,
+    `📦 <b>Заказ ${html(orderNumber(order))}</b>`,
+    `👤 ${html(customerHandle(order.username))}`,
     `📅 ${html(order.delivery_date || "—")}`,
     `⏰ ${html(order.delivery_time || "—")}`,
     `📌 ${html(statusLabel)}`,
@@ -647,6 +721,7 @@ function confirmPayload(order, courier) {
     status: normalizeStatus(order.status),
     telegram: Boolean(order.telegram_sent),
     orderId: order.id,
+    displayNumber: Number.isInteger(Number(order.display_number)) && Number(order.display_number) >= 1001 ? Number(order.display_number) : null,
     courierName: courier?.name || "",
     writeCourier: writeCourierFor(courier, order.id),
   };
@@ -672,8 +747,10 @@ async function applyConfirm(order, next, data, courier, requestId) {
   order.delivery_time = next.time;
   order.delivery_address = next.place;
   order.comment = next.comment;
+  const verified = publicUsername(data.user?.username);
+  if (verified) order.username = verified;
   const givenName = String(data.user?.name || "").trim();
-  order.user_name = givenName || String(data.user?.username || order.user_name || "");
+  if (givenName) order.user_name = givenName;
   order.delivery_locked = true;
   upsertOrderRow({
     order_id: order.id,
@@ -859,6 +936,7 @@ app.get("/api/ready", async (_req, res) => {
     orders: fieldKind("orders"),
     orderIdempotency: fieldKind("orderIdempotency"),
     reservationCleanup: reservationCleanup(),
+    orderNumbers: "sequence",
     writes: false,
   });
 });
@@ -1027,13 +1105,18 @@ app.post("/api/order/create", beginOrderTrace, refuseEphemeralOrders, requireAut
       mark(req, "ORDER_VALIDATED", "INSUFFICIENT_STOCK");
       return res.status(409).json({ error: `Insufficient stock for ${sku}` });
     }
+    const brand = String(product.brand || "").trim();
+    const flavor = String(product.name || "").trim();
+    const sent = item.variant ? String(item.variant).trim() : "";
+    const variant = sent && sent.localeCompare(flavor, "ru", { sensitivity: "accent" }) !== 0 && sent.localeCompare(brand, "ru", { sensitivity: "accent" }) !== 0 ? sent : "";
     normalized.push({
       productId: sku,
       quantity: qty,
       price: Number(product.price),
-      name: product.name,
+      name: flavor,
+      brand,
       category: product.category,
-      variant: item.variant ? String(item.variant) : "",
+      variant,
     });
   }
 
@@ -1046,11 +1129,21 @@ app.post("/api/order/create", beginOrderTrace, refuseEphemeralOrders, requireAut
   mark(req, "ORDER_VALIDATED", "ok");
   if (priced.usedDeferred > 0) req.user.deferred_discount = 0;
 
+  let displayNumber;
+  try {
+    displayNumber = await claimDisplayNumber();
+  } catch (error) {
+    if (key) delete db().orderIdempotency[key];
+    console.error("Display number failed:", error?.code || error?.message || "error");
+    mark(req, "ORDER_VALIDATED", "DISPLAY_NUMBER_FAILED");
+    return res.status(500).json({ error: "Order was not saved" });
+  }
   const orderId = `ORD-${Date.now().toString(36).toUpperCase()}`;
   const order = {
     id: orderId,
+    display_number: displayNumber,
     user_id: req.user.tg_id,
-    username: req.user.username || "",
+    username: publicUsername(req.user.username),
     city,
     status: "buffer",
     total_amount: priced.total,
@@ -1063,7 +1156,7 @@ app.post("/api/order/create", beginOrderTrace, refuseEphemeralOrders, requireAut
     delivery_time: "",
     delivery_address: "",
     comment: "",
-    user_name: req.user.username ? `@${req.user.username}` : req.user.first_name,
+    user_name: [req.user.first_name, req.user.last_name].filter(Boolean).join(" ").trim(),
     user_phone: "",
     stock_committed: false,
     payment_method: "",
@@ -1097,7 +1190,8 @@ app.post("/api/order/create", beginOrderTrace, refuseEphemeralOrders, requireAut
   }), { persist: false });
   const payload = {
     orderId,
-    orderText: `Новый заказ ${orderId}\nСумма: ${priced.total}\nТовары: ${normalized.length} позиций`,
+    displayNumber,
+    orderText: `Новый заказ ${orderNumber(order)}\nСумма: ${priced.total}\nТовары: ${normalized.length} позиций`,
     totalAmount: priced.total,
     status: "buffer",
     expiresAt: order.expires_at,
@@ -1556,6 +1650,7 @@ function botContext() {
         .filter((order) => order.courier_id === courier.courier_id && open.has(normalizeStatus(order.status)))
         .map((order) => ({
           id: order.id,
+          display_number: order.display_number || null,
           status: normalizeStatus(order.status),
           total_amount: Number(order.total_amount),
           delivery_date: order.delivery_date || "",
@@ -1564,7 +1659,7 @@ function botContext() {
           user_name: order.user_name || "",
           username: order.username || "",
           payment_method: order.payment_method || "cash",
-          lines: orderItems(order.id).map((item) => ({ name: item.name, variant: item.variant || "", quantity: item.quantity })),
+          lines: orderItems(order.id).map((item) => lineView(item)),
         }))
         .sort((a, b) => `${a.delivery_date} ${a.delivery_time}`.localeCompare(`${b.delivery_date} ${b.delivery_time}`));
     },
@@ -1616,7 +1711,7 @@ function botContext() {
       const lines = Object.values(db().orders)
         .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
         .slice(0, 5)
-        .map((order) => `${order.id} · ${normalizeStatus(order.status)}`);
+        .map((order) => `${orderNumber(order)} · ${normalizeStatus(order.status)}`);
       return ["📦 Заказы", lines.join("\n") || "Пусто."].join("\n");
     },
     adminCouriersText() {
@@ -1815,6 +1910,7 @@ function scheduleNoticeRetry() {
 async function boot() {
   const mode = await hydrateStore();
   console.log(`Storage: ${mode}`);
+  await backfillDisplayNumbers();
   startReservationCleanup();
   resumeStockMoves();
   await reportSheets();

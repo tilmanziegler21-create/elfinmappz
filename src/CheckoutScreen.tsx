@@ -4,6 +4,7 @@ import { CrystalIllustration } from "./CrystalIllustration";
 import { EmptyState } from "./EmptyState";
 import { api, todayDate, type ApiCourier, type AuthPhase, type SessionUser } from "./api";
 import { courierChatLink } from "./telegram";
+import { cartTitle, orderNumber } from "./lineLabel";
 import { cartEntries, cartMoney, euro } from "./products";
 import { tapSpring } from "./motion";
 
@@ -55,6 +56,7 @@ export function CheckoutScreen({
   const [error, setError] = useState<string | null>(null);
   const [phase, setPhase] = useState<"form" | "loading" | "done">("form");
   const [orderId, setOrderId] = useState<string | null>(null);
+  const [displayNumber, setDisplayNumber] = useState<number | null>(null);
   const [doneTotal, setDoneTotal] = useState(total);
   const [noticePending, setNoticePending] = useState(false);
   const [writeCourier, setWriteCourier] = useState<{ url?: string; start?: string } | null>(null);
@@ -105,7 +107,7 @@ export function CheckoutScreen({
     setPhase("loading");
     try {
       if (!createdId.current) {
-        const created = await api<{ orderId: string }>("/api/order/create", {
+        const created = await api<{ orderId: string; displayNumber?: number | null }>("/api/order/create", {
           method: "POST",
           token,
           headers: { "Idempotency-Key": idempotencyKey.current, "x-request-id": idempotencyKey.current },
@@ -120,9 +122,10 @@ export function CheckoutScreen({
           },
         });
         createdId.current = created.orderId;
+        if (created.displayNumber) setDisplayNumber(created.displayNumber);
       }
       if (!confirmed.current) {
-        const confirmedBody = await api<{ telegram?: boolean; writeCourier?: { url?: string; start?: string } }>("/api/order/confirm", {
+        const confirmedBody = await api<{ telegram?: boolean; displayNumber?: number | null; writeCourier?: { url?: string; start?: string } }>("/api/order/confirm", {
           method: "POST",
           token,
           headers: { "x-request-id": idempotencyKey.current },
@@ -145,6 +148,7 @@ export function CheckoutScreen({
           },
         });
         confirmed.current = true;
+        if (confirmedBody.displayNumber) setDisplayNumber(confirmedBody.displayNumber);
         setNoticePending(confirmedBody.telegram === false);
         setWriteCourier(confirmedBody.writeCourier ?? null);
       }
@@ -186,7 +190,7 @@ export function CheckoutScreen({
           </span>
         </div>
         <h2 className="empty-title">Заказ успешно оформлен!</h2>
-        <p className="empty-text">Заказ: {orderId}</p>
+        <p className="empty-text">Заказ: {orderNumber({ displayNumber, orderId })}</p>
         <p className="empty-text">Статус: Ожидает подтверждения</p>
         <p className="empty-text">Курьер: {courier?.name || "Назначенный курьер"}</p>
         <p className="empty-text">Время: {time}</p>
@@ -243,7 +247,7 @@ export function CheckoutScreen({
         <div className="checkout-card">
           {lines.map((line) => (
             <div className="checkout-line" key={line.variant.id}>
-              <span>{line.product.brand} · {line.variant.label}</span>
+              <span>{cartTitle(line.product, line.variant)}</span>
               <strong>{line.qty}</strong>
             </div>
           ))}

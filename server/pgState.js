@@ -120,3 +120,35 @@ export function queueSnapshot(snapshot, adopt) {
 export function whenPersisted() {
   return latest;
 }
+
+export async function allocateDisplayNumbers(count, minimum = 1000) {
+  const url = String(process.env.DATABASE_URL || "").trim();
+  if (!url || !pool) return null;
+  const wanted = Math.max(0, Number(count) || 0);
+  const floor = Math.max(1000, Number(minimum) || 1000);
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(`CREATE TABLE IF NOT EXISTS elfin_display_counter (
+      id text PRIMARY KEY,
+      value bigint NOT NULL
+    )`);
+    await client.query("INSERT INTO elfin_display_counter (id, value) VALUES ('order', 1000) ON CONFLICT (id) DO NOTHING");
+    const locked = await client.query("SELECT value FROM elfin_display_counter WHERE id = 'order' FOR UPDATE");
+    const base = Math.max(Number(locked.rows[0].value) || 1000, floor);
+    const numbers = [];
+    for (let step = 1; step <= wanted; step += 1) numbers.push(base + step);
+    await client.query("UPDATE elfin_display_counter SET value = $1 WHERE id = 'order'", [base + wanted]);
+    await client.query("COMMIT");
+    return numbers;
+  } catch (error) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (rollbackError) {
+      console.error("Display number rollback failed:", rollbackError?.code || rollbackError?.message || "error");
+    }
+    throw error;
+  } finally {
+    client.release();
+  }
+}

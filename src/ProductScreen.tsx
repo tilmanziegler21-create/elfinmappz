@@ -37,7 +37,6 @@ export function ProductScreen({
   const reduce = useReducedMotion();
   const product = findProduct(productId);
   const [ready, setReady] = useState(false);
-  const [frame, setFrame] = useState(0);
   const [variantId, setVariantId] = useState<string | null>(product ? defaultVariant(product)?.id ?? null : null);
   const [qty, setQty] = useState(1);
   const [note, setNote] = useState<string | null>(null);
@@ -69,7 +68,6 @@ export function ProductScreen({
     const next = findProduct(productId);
     setVariantId(next ? defaultVariant(next)?.id ?? null : null);
     setQty(1);
-    setFrame(0);
     setNote(null);
     setSheet(false);
   }, [productId]);
@@ -160,27 +158,15 @@ export function ProductScreen({
             <ProductFloatStage
               image={current.heroImage}
               label={current.name}
-              frameKey={`${current.id}-${frame}`}
+              frameKey={current.id}
               lite={lite}
               preset={preset}
               accent={accent}
             >
-              <ProductMark category={current.category} frame={frame} />
+              <ProductMark category={current.category} frame={0} />
             </ProductFloatStage>
           )}
         </motion.div>
-        <div className="hero-dots" role="tablist" aria-label="Изображения">
-          {[0, 1].map((item) => (
-            <button
-              key={item}
-              type="button"
-              className={frame === item ? "hero-dot is-on" : "hero-dot"}
-              aria-label={item === 0 ? "Общий вид" : "Грань"}
-              aria-selected={frame === item}
-              onClick={() => setFrame(item)}
-            />
-          ))}
-        </div>
 
         <div className="product-copy">
           <p className="product-kicker">{flavorChoice ? (variant?.label ?? current.flavor) : current.flavor}</p>

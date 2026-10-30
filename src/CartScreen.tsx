@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { EmptyState } from "./EmptyState";
+import { cartTitle } from "./lineLabel";
 import { cartEntries, cartMoney, euro } from "./products";
 import { favoriteExit } from "./productMotion";
 import { cardItem, cardList, ease, tapSpring } from "./motion";
@@ -106,9 +107,9 @@ export function CartScreen({
                       <span className="mark" />
                     </span>
                     <span className="cart-copy">
-                      <span className="cart-name">{line.product.name}</span>
+                      <span className="cart-name">{cartTitle(line.product, line.variant)}</span>
                       <span className="cart-meta">
-                        {line.variant.label} · {euro(line.variant.price)}
+                        {euro(line.variant.price)}
                       </span>
                     </span>
                   </button>

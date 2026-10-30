@@ -1,6 +1,7 @@
 import path from "path";
 import { fileURLToPath } from "url";
 import { copyKeys, language, t } from "./botCopy.js";
+import { customerHandle, formatLine, orderNumber } from "./lineLabel.js";
 
 export const startLogoFile = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../public/elf.jpg");
 
@@ -136,9 +137,9 @@ async function ordersPage(user, ctx, page) {
   const slice = orders.slice(start, start + PAGE);
   const lines = [t(lang, "ordersTitle"), ""];
   for (const order of slice) {
-    lines.push(`📦 ${order.id}`, `${statusName(lang, order.status)} · ${euro(order.final_amount ?? order.total_amount)}`, when(order.created_at), "");
+    lines.push(`📦 ${orderNumber(order)}`, `${statusName(lang, order.status)} · ${euro(order.final_amount ?? order.total_amount)}`, when(order.created_at), "");
   }
-  const rows = slice.map((order) => [{ text: `${t(lang, "more")} ${order.id}`, callback_data: `m:od:${order.id}` }]);
+  const rows = slice.map((order) => [{ text: `${t(lang, "more")} ${orderNumber(order)}`.slice(0, 64), callback_data: `m:od:${order.id}` }]);
   const nav = [];
   if (start > 0) nav.push({ text: t(lang, "prev"), callback_data: `m:orders:${page - 1}` });
   if (start + PAGE < orders.length) nav.push({ text: t(lang, "next"), callback_data: `m:orders:${page + 1}` });
@@ -153,7 +154,8 @@ async function orderDetail(user, ctx, orderId) {
   if (!order) return view(t(lang, "missing"), [[{ text: t(lang, "back"), callback_data: "m:orders:0" }]]);
   const items = await ctx.items(order.id);
   const lines = [
-    `📦 ${order.id}`,
+    `📦 ${orderNumber(order)}`,
+    customerHandle(order.username),
     "",
     statusName(lang, order.status),
     euro(order.final_amount ?? order.total_amount),
@@ -161,7 +163,7 @@ async function orderDetail(user, ctx, orderId) {
     order.delivery_method || "—",
     [order.delivery_date, order.delivery_time].filter(Boolean).join(" · ") || "—",
     "",
-    ...items.map((item) => `${item.name} × ${item.quantity}`),
+    ...items.map((item) => formatLine(item).text),
   ];
   return view(lines.join("\n"), [[{ text: t(lang, "back"), callback_data: "m:orders:0" }]]);
 }
@@ -169,7 +171,7 @@ async function orderDetail(user, ctx, orderId) {
 async function profileView(user, ctx) {
   const lang = user.lang || "ru";
   const name = user.first_name || "—";
-  const username = user.username ? `@${user.username}` : "—";
+  const username = customerHandle(user.username);
   const lines = [
     t(lang, "profileTitle"),
     "",
@@ -215,9 +217,7 @@ function courierNow(ctx) {
 }
 
 function lineText(item) {
-  const name = esc(item?.name || "Товар");
-  const variant = item?.variant ? ` · ${esc(item.variant)}` : "";
-  return `${name}${variant} × ${esc(item?.quantity ?? 1)}`;
+  return esc(formatLine(item).text);
 }
 
 function orderAmount(order) {
@@ -251,8 +251,7 @@ function panelText(orders, today) {
     lines.push(`💰 Касса, ожидается: ${euro(cash)}`);
     if (!group.list.length) lines.push("Открытых заказов нет.");
     for (const order of group.list) {
-      const id = safeId(order.id) || "—";
-      lines.push("", `• ${esc(id)} · ${esc(order.delivery_time || "—")} · ${euro(orderAmount(order))}`);
+      lines.push("", `• ${esc(orderNumber(order))} · ${esc(order.delivery_time || "—")} · ${euro(orderAmount(order))}`);
       const products = (order.lines || []).slice(0, 4).map(lineText);
       if (products.length) lines.push(products.join(", "));
     }
@@ -275,7 +274,7 @@ function panelRows(orders, today, page) {
     const id = safeId(order.id);
     if (!id) continue;
     const whenWord = order.delivery_date === today.iso ? "сегодня" : order.delivery_date === tomorrow ? "завтра" : esc(order.delivery_date || "день");
-    const label = `📦 ${id} · ${order.delivery_time || "—"} · ${whenWord}`;
+    const label = `📦 ${orderNumber(order)} · ${order.delivery_time || "—"} · ${whenWord}`;
     rows.push([{ text: label.slice(0, 64), callback_data: `c:od:${id}` }]);
   }
   const nav = [];
@@ -308,7 +307,8 @@ async function courierCard(user, ctx, orderId, note = "") {
   if (!order) return courierDenied();
   const open = ["pending", "assigned", "picked_up"].includes(order.status);
   const lines = [
-    `📦 <b>Заказ ${esc(order.id)}</b>`,
+    `📦 <b>Заказ ${esc(orderNumber(order))}</b>`,
+    `👤 ${esc(customerHandle(order.username))}`,
     "",
     `📅 ${esc(order.delivery_date || "—")}`,
     `⏰ ${esc(order.delivery_time || "—")}`,

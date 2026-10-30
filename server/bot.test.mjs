@@ -9,6 +9,7 @@ delete process.env.TELEGRAM_BOT_TOKEN;
 delete process.env.TELEGRAM_TEST_IDS;
 
 const { copyKeys, t } = await import("./botCopy.js");
+const { customerHandle, formatLine, orderNumber } = await import("./lineLabel.js");
 const { commands, handleUpdate, menuButton, onceUpdate, parseUpdate, startLogoFile } = await import("./bot.js");
 const { bindNoticeRecipient, enqueueNotice, telegramTestMode, trySendNotice } = await import("./notices.js");
 
@@ -205,7 +206,8 @@ record("courier-own", card.edit.text.includes("ORD-1") && card.edit.text.include
 const panel = courier.send;
 const todayButton = panel.rows.find((row) => row[0]?.callback_data === "c:od:ORD-1");
 const nextPage = panel.rows.find((row) => row.some((button) => button.callback_data === "c:pg:1"));
-record("courier-panel", panel.text.includes("СЕГОДНЯ · 29.10.2026") && panel.text.includes("ЗАВТРА · 30.10.2026") && panel.text.includes("Касса, ожидается") && panel.text.includes("ELFLIQ · Blue Razz Ice × 1") && todayButton && nextPage, panel.text.slice(0, 180));
+record("courier-panel", panel.text.includes("СЕГОДНЯ · 29.10.2026") && panel.text.includes("ЗАВТРА · 30.10.2026") && panel.text.includes("Касса, ожидается") && panel.text.includes("ELFLIQ — Blue Razz Ice × 1") && todayButton && nextPage, panel.text.slice(0, 180));
+record("line-label", formatLine({ brand: "ELFLIQ", name: "Blue Razz Ice", variant: "Blue Razz Ice", quantity: 2 }).text === "ELFLIQ — Blue Razz Ice × 2" && formatLine({ name: "Blue Razz Ice", variant: "Blue Razz Ice", quantity: 1 }).text === "Blue Razz Ice × 1" && !formatLine({ brand: "ELFLIQ", name: "Blue Razz Ice", variant: "Blue Razz Ice" }).text.includes("Blue Razz Ice — Blue Razz Ice") && customerHandle("") === "Без username" && customerHandle("client") === "@client" && orderNumber({ display_number: 1008 }) === "#1008" && orderNumber({ id: "ORD-1" }) === "ORD-1");
 const refreshed = await handleUpdate({ callback_query: { id: "cb-refresh", data: "c:home", from: { id: "100000001", language_code: "ru" }, message: { message_id: 9, chat: { id: "100000001" } } } }, ctx());
 record("courier-refresh", refreshed.answer.id === "cb-refresh" && refreshed.edit.text.includes("Панель курьера") && refreshed.edit.rows.at(-1)[0].text === "🏠 Главное меню", refreshed.edit.rows.at(-1)[0].callback_data);
 const pageTwo = await handleUpdate({ callback_query: { id: "cb-page", data: "c:pg:1", from: { id: "100000001", language_code: "ru" }, message: { message_id: 9, chat: { id: "100000001" } } } }, ctx());

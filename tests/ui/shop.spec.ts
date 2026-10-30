@@ -72,16 +72,14 @@ test("кнопка каталога называется так же, как д�
   await expect(page).toHaveURL(/#product\//);
 });
 
-test("точки кадра меняют выбор и не прыгают по высоте", async ({ page }) => {
+test("одна фотография товара не листается", async ({ page }) => {
   await openShop(page);
   await page.getByRole("button", { name: /ELFLIQ/ }).first().click();
   const scene = page.locator(".hero-scene");
   const before = await scene.boundingBox();
-  await page.getByRole("button", { name: "Грань" }).click();
-  await expect(page.getByRole("button", { name: "Грань" })).toHaveAttribute("aria-selected", "true");
-  await page.getByRole("button", { name: "Общий вид" }).click();
-  await expect(page.getByRole("button", { name: "Общий вид" })).toHaveAttribute("aria-selected", "true");
-  await page.getByRole("button", { name: "Грань" }).click();
+  await expect(page.getByRole("tablist", { name: "Изображения" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Грань" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Общий вид" })).toHaveCount(0);
   const after = await scene.boundingBox();
   expect(before && after && Math.abs(before.height - after.height)).toBeLessThan(1);
 });
@@ -186,13 +184,15 @@ test("подробности заказа берутся из истории", a
   await page.getByRole("button", { name: "Заказы" }).click();
   const more = page.getByRole("button", { name: "Подробнее", exact: true }).first();
   await more.click();
-  await expect(page.getByText("Северный · 10 мл · 1").first()).toBeVisible();
+  await expect(page.getByText("ELFIN — Северный — 10 мл × 1").first()).toBeVisible();
+  await expect(page.getByText("@customer_example").first()).toBeVisible();
+  await expect(page.getByRole("button", { name: /Заказ #/ }).first()).toBeVisible();
   await expect(page.getByText("Курьер Север").first()).toBeVisible();
   await expect(page.getByRole("link", { name: /Написать курьеру/ })).toHaveAttribute("href", "https://t.me/courier_north");
   await expect(page.getByText("Самовывоз", { exact: true }).first()).toBeVisible();
   await page.getByRole("button", { name: "Скрыть" }).click();
-  await expect(page.getByText("Северный · 10 мл · 1")).toHaveCount(0);
-  await page.getByRole("button", { name: "Подробнее", exact: true }).first().click();
+  await expect(page.getByText("ELFIN — Северный — 10 мл × 1")).toHaveCount(0);
+  await page.getByRole("button", { name: /Заказ #/ }).first().click();
   await expect(page.getByText("Курьер Север")).toBeVisible();
 });
 
@@ -319,26 +319,26 @@ async function confirmedPickup(request: APIRequestContext, sku: string) {
     },
   });
   expect(confirmed.ok()).toBeTruthy();
-  return String(body.orderId);
+  return { orderId: String(body.orderId), displayNumber: Number(body.displayNumber) };
 }
 
 test("админ отменяет, курьер подтверждает выдачу", async ({ page, request }) => {
-  const cancelId = await confirmedPickup(request, "north:10");
-  const deliverId = await confirmedPickup(request, "clear:10");
+  const cancel = await confirmedPickup(request, "north:10");
+  const deliver = await confirmedPickup(request, "clear:10");
   await openShop(page);
   await page.getByRole("button", { name: "Профиль" }).click();
   await page.getByRole("button", { name: "Админ", exact: true }).click();
   await page.getByRole("button", { name: "Админка" }).click();
-  const cancelCard = page.locator("article", { hasText: cancelId });
+  const cancelCard = page.locator("article", { hasText: cancel.orderId });
   await cancelCard.getByRole("button", { name: "Отменить" }).click();
   await expect(cancelCard.getByText("Отменён")).toBeVisible();
-  const deliverCard = page.locator("article", { hasText: deliverId });
+  const deliverCard = page.locator("article", { hasText: deliver.orderId });
   await deliverCard.getByRole("button", { name: "Назначить курьера" }).click();
   await expect(deliverCard.getByRole("button", { name: "В пути" })).toBeVisible();
   await page.getByRole("button", { name: "Профиль" }).click();
   await page.getByRole("button", { name: "Север", exact: true }).click();
   await page.getByRole("button", { name: "Панель курьера" }).click();
-  const courierCard = page.locator("article", { hasText: deliverId });
+  const courierCard = page.locator("article", { hasText: `Заказ #${deliver.displayNumber}` });
   await courierCard.getByRole("button", { name: "Выдал", exact: true }).click();
   await page.getByRole("button", { name: "Назад" }).click();
   await expect(courierCard.getByRole("button", { name: "Выдал", exact: true })).toBeVisible();

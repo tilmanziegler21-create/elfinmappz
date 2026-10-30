@@ -3,6 +3,7 @@ import { api, customerStatus, type ApiCourier, type ApiOrder } from "./api";
 import { courierChatLink } from "./telegram";
 import { EmptyState } from "./EmptyState";
 import { positionWord } from "./orders";
+import { customerHandle, formatLine, orderNumber } from "./lineLabel";
 import { euro } from "./products";
 
 export function OrdersScreen({
@@ -73,10 +74,11 @@ export function OrdersScreen({
         const method = order.deliveryMethod === "pickup" ? "Самовывоз" : order.deliveryMethod === "courier" ? "Доставка" : "";
         return (
           <article key={order.orderId} className="order-card">
-            <div className="order-head">
-              <h2>Заказ {order.orderId}</h2>
+            <button type="button" className="order-head" aria-expanded={open} onClick={() => setOpenId(open ? null : order.orderId)}>
+              <h2>Заказ {orderNumber(order)}</h2>
               <span className={`order-status is-${order.status}`}>{customerStatus[order.status] || order.status}</span>
-            </div>
+            </button>
+            <p>{order.handle || customerHandle(order.username)}</p>
             <p>{order.lines.length} {positionWord(order.lines.length)}, {order.units} шт. · {euro(order.finalAmount ?? order.totalAmount)}</p>
             <p>{order.time || "Время не выбрано"}</p>
             {order.place ? <p>{method || "Получение"} · {order.place}</p> : null}
@@ -92,7 +94,7 @@ export function OrdersScreen({
               <div>
                 <ul className="order-items">
                   {order.lines.map((line) => (
-                    <li key={`${line.name}-${line.variant}`}>{line.name} · {line.variant} · {line.qty}</li>
+                    <li key={`${line.brand || ""}-${line.name}-${line.variant}`}>{line.text || formatLine(line).text}</li>
                   ))}
                 </ul>
                 <p>Итого {euro(order.finalAmount ?? order.totalAmount)}</p>

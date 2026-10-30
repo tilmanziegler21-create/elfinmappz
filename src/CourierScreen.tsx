@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { motion, useReducedMotion } from "framer-motion";
 import { api, askTelegram, courierStatus, type ApiOrder } from "./api";
 import { positionWord } from "./orders";
+import { customerHandle, formatLine, orderNumber } from "./lineLabel";
 import { euro } from "./products";
 import { tapSpring } from "./motion";
 
@@ -90,24 +91,20 @@ export function CourierScreen({ token, city }: { token: string; city: string }) 
           return (
             <article key={order.orderId} className="order-card">
               <div className="order-head">
-                <h2>Заказ {order.orderId}</h2>
+                <h2>Заказ {orderNumber(order)}</h2>
                 <span className={`order-status is-${order.status}`}>{courierStatus[order.status] || order.status}</span>
               </div>
               <dl className="order-facts">
-                <div><dt>Покупатель</dt><dd>{order.customerName || "Клиент Telegram"}</dd></div>
-                <div><dt>Username</dt><dd>{order.username ? `@${order.username}` : "нет"}</dd></div>
-                <div><dt>Telegram ID</dt><dd>{order.tgId}</dd></div>
-                <div><dt>Телефон</dt><dd>{order.phone || "нет"}</dd></div>
+                <div><dt>Username</dt><dd>{order.handle || customerHandle(order.username)}</dd></div>
                 <div><dt>Сумма</dt><dd>{euro(amount)}</dd></div>
                 <div><dt>Выплата</dt><dd>{euro(order.payout || 0)}</dd></div>
                 <div><dt>Товары</dt><dd>{order.lines.length} {positionWord(order.lines.length)}, {order.units} шт.</dd></div>
                 <div><dt>Время</dt><dd>{order.date} {order.time}</dd></div>
-                <div><dt>{order.deliveryMethod === "pickup" ? "Место" : "Адрес"}</dt><dd>{order.place}</dd></div>
                 {order.comment ? <div><dt>Комментарий</dt><dd>{order.comment}</dd></div> : null}
               </dl>
               <ul className="order-items">
                 {order.lines.map((line) => (
-                  <li key={`${line.name}-${line.variant}`}>{line.name} · {line.variant} · {line.qty}</li>
+                  <li key={`${line.brand || ""}-${line.name}-${line.variant}`}>{line.text || formatLine(line).text}</li>
                 ))}
               </ul>
               {open ? (

@@ -189,7 +189,7 @@ try {
   record("create-one", "Один ключ создаёт один заказ", created.data.orderId && created.data.orderId === duplicate.data.orderId && orderCount === 1, `id ${created.data.orderId}, заказов ${orderCount}`);
   const order = db().orders[created.data.orderId];
   record("create-sum", "Сумма берётся из каталога, не из клиента", created.data.totalAmount === 17.8 && order.total_amount === 17.8, `ответ ${created.data.totalAmount}`);
-  record("create-customer", "Данные покупателя сохранены", order.user_id === "123456789" && order.username === "customer_example" && order.user_name === "@customer_example", `${order.user_id} ${order.user_name}`);
+  record("create-customer", "Данные покупателя сохранены", order.user_id === "123456789" && order.username === "customer_example" && order.user_name === "Клиент" && order.display_number >= 1001 && created.data.displayNumber === order.display_number && duplicate.data.displayNumber === order.display_number, `${order.user_id} ${order.username} #${order.display_number}`);
   const reserved = db().reservations.filter((item) => item.order_id === order.id && item.released === false).reduce((sum, item) => sum + item.qty, 0);
   record("reserve-qty", "Резерв равен количеству, склад ещё не уменьшен", reserved === 2 && workbook().products.find((item) => item.sku === "frost:10").stock === 7, `резерв ${reserved}, склад ${workbook().products.find((item) => item.sku === "frost:10").stock}`);
 
@@ -211,7 +211,7 @@ try {
   record("confirm-ignores-status", "Клиент не ставит delivered через confirm", order.status === "pending", order.status);
   record("deduct-once", "Confirm списывает один раз", workbook().products.find((item) => item.sku === "frost:10").stock === 5, `склад ${workbook().products.find((item) => item.sku === "frost:10").stock}`);
   const notice = db().notices.at(-1);
-  record("notify-local", "Уведомление курьера записано локально", Boolean(notice) && notice.tgId === "100000001" && notice.text.includes(order.id) && notice.text.includes("Ледяная 4") && notice.text.includes("у подъезда") && notice.text.includes("13:00") && notice.text.includes("17.8"), notice ? `sent=${notice.sent}` : "нет записи");
+  record("notify-local", "Уведомление курьера записано локально", Boolean(notice) && notice.tgId === "100000001" && notice.text.includes(`#${order.display_number}`) && notice.text.includes("@customer_example") && notice.text.includes("ELFIN — Иней") && notice.text.includes("13:00") && notice.text.includes("17.8") && !notice.text.includes("Ледяная") && !notice.text.includes("Клиент"), notice ? notice.text.slice(0, 180) : "нет записи");
   record("notify-telegram", "Telegram не отправлялся", notice?.sent === false, "токена нет, реальная отправка не проверялась");
 
   const stockNow = workbook().products.find((item) => item.sku === "frost:10").stock;

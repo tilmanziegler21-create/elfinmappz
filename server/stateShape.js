@@ -175,7 +175,12 @@ function mergeOrder(remote, local) {
   const localRank = STATUS_RANK[local?.status] || 0;
   const primary = localRank >= remoteRank ? local : remote;
   const secondary = primary === local ? remote : local;
-  return blankFill(primary, secondary);
+  const merged = blankFill(primary, secondary);
+  const numbers = [remote?.display_number, local?.display_number]
+    .map((value) => Number(value))
+    .filter((value) => Number.isInteger(value) && value >= 1001);
+  if (numbers.length) merged.display_number = Math.min(...numbers);
+  return merged;
 }
 
 function mergeMove(remote, local) {
