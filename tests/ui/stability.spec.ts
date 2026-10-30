@@ -117,7 +117,8 @@ test("цепочка экранов не теряет и не перекрыва
       const hidden = !style || style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0;
       const home = document.body.innerText.includes("Всё в одном месте");
       const product = Boolean(document.querySelector(".product-page"));
-      const catalog = Boolean(document.querySelector(".catalog-tools"));
+      const catalogNode = document.querySelector(".catalog-tools");
+      const catalog = Boolean(catalogNode?.closest("section:not([hidden])"));
       send?.(`${hidden ? "hidden" : "shown"}:${home ? "home" : ""}${product ? "product" : ""}${catalog ? "catalog" : ""}`);
       requestAnimationFrame(loop);
     };

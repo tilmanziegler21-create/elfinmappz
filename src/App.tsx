@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { AdminScreen } from "./AdminScreen";
 import { api, type ApiCourier, type AuthPhase, type Session, type SessionUser } from "./api";
 import { bindTelegramViewport, resolveTelegramWebApp, telegramBotLink, telegramWebApp } from "./telegram";
@@ -14,10 +14,9 @@ import { CourierScreen } from "./CourierScreen";
 import { OrdersScreen } from "./OrdersScreen";
 import { CountBump } from "./CountBump";
 import { ProductScreen } from "./ProductScreen";
-import { navIndicator } from "./productMotion";
 import { mediaByBrand } from "./productMedia";
 import { CART_KEY, clampLineQty, defaultVariant, euro, findProduct, lineKey, products, readLooseCart, sanitizeCart, setSheetCatalog, type Availability, type Product, type Variant } from "./products";
-import { ease, pageMove, sectionItem, sectionList, tapSpring } from "./motion";
+import { sectionItem, sectionList, tapSpring } from "./motion";
 import { prewarmImages } from "./ImagePreloader";
 
 type Screen = "home" | "catalog" | "cart" | "orders" | "profile" | "checkout" | "courier" | "admin";
@@ -134,7 +133,6 @@ const copy: Record<Screen, { kicker: string; title: string; lede?: string }> = {
 };
 
 export function App() {
-  const reduce = useReducedMotion();
   const [age, setAge] = useState<Age>(() =>
     sessionStorage.getItem(AGE_KEY) === "ok" ? "ok" : "pending",
   );
@@ -171,8 +169,10 @@ export function App() {
     ? { kicker: "ELFIN Market", title: "Закрыто", lede: "Только с 18 лет" }
     : { kicker: "ELFIN MARKET", title: "ELFIN", lede: "Подтвердите возраст" };
 
-  const soft = reduce ? { initial: false as const } : pageMove;
   const view = productId ? "product" : screen;
+  const scrolls = useRef<Partial<Record<Screen, number>>>({});
+  const heldRef = useRef<Screen[]>(["home"]);
+  if (age === "ok" && !heldRef.current.includes(screen)) heldRef.current = [...heldRef.current, screen];
 
   function settleCart() {
     setCart((current) => {
@@ -365,6 +365,14 @@ export function App() {
     opening.current = productId;
   }, [productId]);
 
+  useLayoutEffect(() => {
+    if (productId) return;
+    const body = document.querySelector(".body");
+    if (!(body instanceof HTMLElement)) return;
+    const next = scrolls.current[screen];
+    if (typeof next === "number") body.scrollTop = next;
+  }, [productId, screen]);
+
   useEffect(() => {
     if (productId || screen !== "catalog") return;
     const body = document.querySelector(".body");
@@ -383,9 +391,20 @@ export function App() {
   function openProduct(id: string) {
     if (productId === id || opening.current === id) return;
     opening.current = id;
-    if (screen === "catalog") catalogScroll.current = document.querySelector(".body")?.scrollTop ?? 0;
+    const body = document.querySelector(".body");
+    if (body instanceof HTMLElement) {
+      scrolls.current[screen] = body.scrollTop;
+      if (screen === "catalog") catalogScroll.current = body.scrollTop;
+    }
     setProductId(id);
     window.history.pushState({ productFrom: screen }, "", `#product/${id}`);
+  }
+
+  function showScreen(next: Screen) {
+    const body = document.querySelector(".body");
+    if (body instanceof HTMLElement && !productId) scrolls.current[screen] = body.scrollTop;
+    setCheckoutOpen(false);
+    setScreen(next);
   }
 
   function closeProduct() {
@@ -458,59 +477,50 @@ export function App() {
       <Atmosphere />
       <header className="toprow">
         <ElfMedallion />
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.div
-            key={age === "ok" ? screen : age}
-            className="titles"
-            initial={reduce ? false : { opacity: 1, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={reduce ? undefined : { opacity: 1, y: -4 }}
-            transition={{ duration: 0.16, ease }}
-          >
-            <p className="kicker">{header.kicker}</p>
-            <h1 className="brand-mark" data-long={header.title.length > 6 ? "true" : "false"}>
-              {header.title}
-            </h1>
-            {header.lede ? <p className="lede">{header.lede}</p> : null}
-          </motion.div>
-        </AnimatePresence>
+        <div className="titles">
+          <p className="kicker">{header.kicker}</p>
+          <h1 className="brand-mark" data-long={header.title.length > 6 ? "true" : "false"}>
+            {header.title}
+          </h1>
+          {header.lede ? <p className="lede">{header.lede}</p> : null}
+        </div>
       </header>
 
       <div className="body">
-        <AnimatePresence mode="wait" initial={false}>
-          {age !== "ok" ? (
-            <motion.section key={age} className="panel" {...soft}>
-              {age === "pending" ? (
-                <>
-                  <p className="panel-text">
-                    Магазин доступен только лицам старше 18 лет.
-                  </p>
-                  <Press className="btn btn-primary" onClick={allow}>
-                    Мне есть 18
-                  </Press>
-                  <Press className="btn btn-ghost" onClick={() => setAge("denied")}>
-                    Мне нет 18
-                  </Press>
-                </>
-              ) : (
-                <>
-                  <p className="panel-text">
-                    Доступ закрыт. Магазин только для совершеннолетних.
-                  </p>
-                  <Press className="btn btn-ghost" onClick={() => setAge("pending")}>
-                    Вернуться
-                  </Press>
-                </>
-              )}
-            </motion.section>
-          ) : (
-            <motion.section
-              key={view}
-              className={view === "home" || view === "catalog" || view === "product" || view === "profile" ? "panel panel-home" : view === "cart" || view === "checkout" || view === "orders" || view === "courier" || view === "admin" ? "panel panel-cart" : "panel"}
-              {...soft}
-            >
-              {view === "home" ? <Home onOpen={setScreen} onProduct={openProduct} onCart={() => setScreen("cart")} cartCount={cartCount} shelf={catalogMode === "live" ? liveProducts.slice(0, 4) : []} live={catalogMode === "live"} /> : null}
-              {view === "catalog" ? (
+        {age !== "ok" ? (
+          <section className="panel">
+            {age === "pending" ? (
+              <>
+                <p className="panel-text">
+                  Магазин доступен только лицам старше 18 лет.
+                </p>
+                <Press className="btn btn-primary" onClick={allow}>
+                  Мне есть 18
+                </Press>
+                <Press className="btn btn-ghost" onClick={() => setAge("denied")}>
+                  Мне нет 18
+                </Press>
+              </>
+            ) : (
+              <>
+                <p className="panel-text">
+                  Доступ закрыт. Магазин только для совершеннолетних.
+                </p>
+                <Press className="btn btn-ghost" onClick={() => setAge("pending")}>
+                  Вернуться
+                </Press>
+              </>
+            )}
+          </section>
+        ) : (
+          <>
+            {heldRef.current.includes("home") ? (
+              <section className={view === "home" ? "panel panel-home is-current" : "panel panel-home"} hidden={view !== "home"}>
+                <Home onOpen={showScreen} onProduct={openProduct} onCart={() => showScreen("cart")} cartCount={cartCount} shelf={catalogMode === "live" ? liveProducts.slice(0, 4) : []} live={catalogMode === "live"} />
+              </section>
+            ) : null}
+            {heldRef.current.includes("catalog") ? (
+              <section className={view === "catalog" ? "panel panel-home is-current" : "panel panel-home"} hidden={view !== "catalog"}>
                 <Catalog
                   mode={catalogMode}
                   items={liveProducts}
@@ -519,11 +529,10 @@ export function App() {
                   onOpen={openProduct}
                   onRefresh={() => setCatalogMode("loading")}
                 />
-              ) : null}
-              {view === "product" && productId ? (
-                <ProductScreen productId={productId} cart={cart} onBack={closeProduct} onAdd={addToCart} onCart={() => { closeProduct(); setScreen("cart"); }} />
-              ) : null}
-              {view === "cart" ? (
+              </section>
+            ) : null}
+            {heldRef.current.includes("cart") ? (
+              <section className={view === "cart" ? "panel panel-cart is-current" : "panel panel-cart"} hidden={view !== "cart"}>
                 <CartScreen
                   cart={cart}
                   adjusted={cartAdjusted}
@@ -531,14 +540,18 @@ export function App() {
                   onRemove={removeLine}
                   onRestore={restoreLine}
                   onOpen={openProduct}
-                  onCatalog={() => setScreen("catalog")}
+                  onCatalog={() => showScreen("catalog")}
                   onContinue={() => { setCheckoutHeld(true); setCheckoutOpen(true); }}
                 />
-              ) : null}
-              {view === "checkout" && !session ? <p className="empty-text">Нет сессии. Запустите API и откройте приложение снова.</p> : null}
-              {view === "orders" && session ? <OrdersScreen token={session.token} city={session.city} couriers={couriers} botUrl={botUrl} onCatalog={() => setScreen("catalog")} /> : null}
-              {view === "orders" && !session ? <p className="empty-text">{authPhase === "initializing" ? "Подтверждаем Telegram." : "История откроется после входа."}</p> : null}
-              {view === "profile" ? (
+              </section>
+            ) : null}
+            {heldRef.current.includes("orders") ? (
+              <section className={view === "orders" ? "panel panel-cart is-current" : "panel panel-cart"} hidden={view !== "orders"}>
+                {session ? <OrdersScreen token={session.token} city={session.city} couriers={couriers} botUrl={botUrl} onCatalog={() => showScreen("catalog")} /> : <p className="empty-text">{authPhase === "initializing" ? "Подтверждаем Telegram." : "История откроется после входа."}</p>}
+              </section>
+            ) : null}
+            {heldRef.current.includes("profile") ? (
+              <section className={view === "profile" ? "panel panel-home is-current" : "panel panel-home"} hidden={view !== "profile"}>
                 <Profile
                   session={session}
                   authPhase={authPhase}
@@ -546,13 +559,13 @@ export function App() {
                   onCourier={() => {
                     if (session && (session.user.status === "courier" || session.user.status === "admin")) {
                       window.location.hash = "#/courier";
-                      setScreen("courier");
+                      showScreen("courier");
                     }
                   }}
                   onAdmin={() => {
                     if (session?.user.status === "admin") {
                       window.location.hash = "#/admin";
-                      setScreen("admin");
+                      showScreen("admin");
                     }
                   }}
                   roleError={roleError}
@@ -562,20 +575,29 @@ export function App() {
                       const next = await api<Session>("/api/auth/dev", { method: "POST", body: { tgId } });
                       setSession({ ...next, city: session?.city || next.city });
                       setRoleError(null);
-                      setScreen("profile");
+                      showScreen("profile");
                     } catch (reason) {
                       setRoleError(reason instanceof Error ? reason.message : "Ошибка запроса");
                     }
                   }}
                 />
-              ) : null}
-              {view === "courier" && session && (session.user.status === "courier" || session.user.status === "admin") ? (
+              </section>
+            ) : null}
+            {heldRef.current.includes("courier") && session && (session.user.status === "courier" || session.user.status === "admin") ? (
+              <section className={view === "courier" ? "panel panel-cart is-current" : "panel panel-cart"} hidden={view !== "courier"}>
                 <CourierScreen token={session.token} city={session.city} />
-              ) : null}
-              {view === "admin" && session?.user.status === "admin" ? <AdminScreen token={session.token} city={session.city} /> : null}
-            </motion.section>
-          )}
-        </AnimatePresence>
+              </section>
+            ) : null}
+            {heldRef.current.includes("admin") && session?.user.status === "admin" ? (
+              <section className={view === "admin" ? "panel panel-cart is-current" : "panel panel-cart"} hidden={view !== "admin"}>
+                <AdminScreen token={session.token} city={session.city} />
+              </section>
+            ) : null}
+            {productId ? (
+              <ProductScreen productId={productId} cart={cart} onBack={closeProduct} onAdd={addToCart} onCart={() => { closeProduct(); showScreen("cart"); }} />
+            ) : null}
+          </>
+        )}
       </div>
 
       {age === "ok" ? (
@@ -592,14 +614,14 @@ export function App() {
                     if (hash === "#/courier" || hash === "#/admin" || hash.startsWith("#product/")) {
                       window.history.pushState(null, "", `${window.location.pathname}${window.location.search}`);
                     }
-                    if (productId) setProductId(null);
-                    setCheckoutOpen(false);
-                    setScreen(item.id);
+                    if (productId) {
+                      opening.current = null;
+                      setProductId(null);
+                    }
+                    showScreen(item.id);
                   }}
                 >
-                  {active ? (
-                    reduce ? <span className="nav-pill" /> : <motion.span layoutId="nav-pill" className="nav-pill" transition={navIndicator} />
-                  ) : null}
+                  {active ? <span className="nav-pill" /> : null}
                   <Icon name={item.icon} />
                   <span>{item.label}</span>
                   {item.id === "cart" && cartCount > 0 ? <CountBump className="nav-badge" value={cartCount} label={`В корзине ${cartCount}`} /> : null}
@@ -623,9 +645,9 @@ export function App() {
               botUrl={botUrl}
               couriers={couriers}
               onClearCart={() => setCart({})}
-              onCatalog={() => { setCheckoutOpen(false); setScreen("catalog"); }}
-              onHome={() => { setCheckoutOpen(false); setScreen("home"); }}
-              onOrders={() => { setCheckoutOpen(false); setScreen("orders"); }}
+              onCatalog={() => showScreen("catalog")}
+              onHome={() => showScreen("home")}
+              onOrders={() => showScreen("orders")}
               onClose={() => setCheckoutOpen(false)}
               authFailed={Boolean(authError)}
             />

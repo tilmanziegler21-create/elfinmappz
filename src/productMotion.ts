@@ -11,9 +11,9 @@ export const scenePresets = {
 } as const;
 
 export type ScenePreset = keyof typeof scenePresets;
-export const productEntrance = { duration: 0.7, ease, y: 16 };
+export const productEntrance = { duration: 0.15, ease, y: 4 };
 export const frameShift = { duration: 0.26, ease };
-export const variantSheetMove = { duration: 0.38, ease };
+export const variantSheetMove = { duration: 0.16, ease };
 export const addPulse = { duration: 0.4, ease };
 
 export const productTap = { scale: 0.97 };

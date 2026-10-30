@@ -16,7 +16,7 @@ import {
   products,
   type Variant,
 } from "./products";
-import { ease, tapSpring } from "./motion";
+import { tapSpring } from "./motion";
 import { readSaved, SAVED_EVENT, writeSaved } from "./saved";
 
 type AddResult = "added" | "limit" | "unavailable";
@@ -36,33 +36,16 @@ export function ProductScreen({
 }) {
   const reduce = useReducedMotion();
   const product = findProduct(productId);
-  const [ready, setReady] = useState(false);
   const [variantId, setVariantId] = useState<string | null>(product ? defaultVariant(product)?.id ?? null : null);
   const [qty, setQty] = useState(1);
   const [note, setNote] = useState<string | null>(null);
-  const [out, setOut] = useState(false);
   const [sheet, setSheet] = useState(false);
   const [saved, setSaved] = useState(readSaved);
   const lite = liteMotion();
 
   function leave() {
-    if (out) return;
-    if (reduce) {
-      onBack();
-      return;
-    }
-    setOut(true);
-    window.setTimeout(onBack, 300);
+    onBack();
   }
-
-  useEffect(() => {
-    if (reduce) {
-      setReady(true);
-      return;
-    }
-    const id = window.setTimeout(() => setReady(true), 280);
-    return () => window.clearTimeout(id);
-  }, [reduce, productId]);
 
   useEffect(() => {
     const next = findProduct(productId);
@@ -101,7 +84,7 @@ export function ProductScreen({
 
   if (!product) {
     return (
-      <div className={out ? "product-page is-out" : "product-page"}>
+      <div className="product-page">
         <ProductBar category="Каталог" cartCount={cartTotal(cart)} onBack={leave} onCart={onCart} />
         <div className="empty catalog-empty">
           <div className="mark mark-lg" aria-hidden="true" />
@@ -140,7 +123,7 @@ export function ProductScreen({
   }
 
   return (
-    <div className={out ? "product-page is-out" : "product-page"}>
+    <div className="product-page">
       <ProductBar category={sectionLabel(current.category)} cartCount={cartTotal(cart)} onBack={leave} onCart={onCart} />
       <div className="product-scroll">
         <motion.div
@@ -149,15 +132,12 @@ export function ProductScreen({
           data-scene={preset}
           data-accent={accent ?? "ice"}
           data-frames="1"
-          initial={reduce ? false : { opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.42, ease }}
+          initial={false}
         >
           <span className="hero-glow" />
           <span className="hero-gem hero-gem-a" />
           <span className="hero-gem hero-gem-b" />
-          {!ready ? <div className="skel hero-skel" /> : (
-            <ProductFloatStage
+          <ProductFloatStage
               image={heroImage}
               label={current.name}
               frameKey={current.id}
@@ -167,7 +147,6 @@ export function ProductScreen({
             >
               <ProductMark category={current.category} frame={0} />
             </ProductFloatStage>
-          )}
         </motion.div>
 
         <div className="product-copy">

@@ -447,6 +447,19 @@ button {
   gap: 10px;
 }
 
+.panel[hidden] {
+  display: none !important;
+}
+
+.panel.is-current {
+  animation: screen-in 150ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+@keyframes screen-in {
+  from { transform: translate3d(0, 4px, 0); }
+  to { transform: none; }
+}
+
 .screen-hold {
   display: none;
 }
@@ -1062,7 +1075,7 @@ a.btn {
   align-items: flex-end;
   pointer-events: none;
   visibility: hidden;
-  transition: visibility 0s linear 0.38s;
+  transition: visibility 0s linear 0.16s;
 }
 
 .sheet-layer.is-open {
@@ -1077,12 +1090,12 @@ a.btn {
   border: 0;
   background: rgba(18, 58, 109, 0.2);
   opacity: 0;
-  transition: opacity 0.38s var(--ease);
+  transition: opacity 0.16s var(--ease);
 }
 
 .sheet-layer.is-open .sheet-scrim {
   opacity: 1;
-  transition: opacity 0.38s var(--ease);
+  transition: opacity 0.16s var(--ease);
 }
 
 .sheet-panel {
@@ -1099,12 +1112,12 @@ a.btn {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), #eef5fb);
   box-shadow: 0 -12px 32px rgba(18, 58, 109, 0.12);
   transform: translateY(110%);
-  transition: transform 0.38s var(--ease);
+  transition: transform 0.16s var(--ease);
 }
 
 .sheet-layer.is-open .sheet-panel {
   transform: none;
-  transition: transform 0.38s var(--ease);
+  transition: transform 0.16s var(--ease);
 }
 
 .sheet-panel .order-sheet {
@@ -1812,14 +1825,11 @@ a.btn {
   background:
     radial-gradient(420px 240px at 50% 18%, rgba(255, 255, 255, 0.92), transparent 70%),
     linear-gradient(180deg, #f7fbfe 0%, #e7f1f8 100%);
-  animation: page-in 0.36s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: page-in 150ms cubic-bezier(0, 0, 0.2, 1);
 }
 
 .product-page.is-out {
   animation: none;
-  transform: translateX(22px);
-  opacity: 0;
-  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.3s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .product-bar {
@@ -2399,8 +2409,8 @@ a.btn {
 }
 
 @keyframes page-in {
-  from { opacity: 1; transform: translate3d(14px, 0, 0); }
-  to { opacity: 1; transform: none; }
+  from { transform: translate3d(0, 4px, 0); }
+  to { transform: none; }
 }
 
 @keyframes skel {
