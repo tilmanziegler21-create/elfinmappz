@@ -336,7 +336,9 @@ function jpegSize(buffer) {
 const logo = readFileSync(startLogoFile);
 const logoSize = jpegSize(logo);
 record("logo-file", startLogoFile.endsWith(`${path.sep}public${path.sep}elf.jpg`) && logo[0] === 0xff && logo[1] === 0xd8 && logo.at(-2) === 0xff && logo.at(-1) === 0xd9 && logo.length > 20000 && logoSize.width === 640 && logoSize.height === 640, `${logoSize.width}x${logoSize.height} ${logo.length}`);
-record("commands", commands.map((item) => `${item.command}:${item.description}`).join("|") === "start:Главное меню|shop:Открыть магазин|orders:Мои заказы|courier:Панель курьера|help:Помощь", commands.map((item) => item.command).join(","));
+record("commands", commands.map((item) => `${item.command}:${item.description}`).join("|") === "start:Главное меню|shop:Открыть магазин|orders:Мои заказы|courier:Панель курьера|help:Помощь|myid:Показать свой Telegram ID", commands.map((item) => item.command).join(","));
+const myId = await handleUpdate({ message: { message_id: 41, chat: { id: "777001" }, from: { id: "777001", language_code: "ru" }, text: "/myid" } }, ctx());
+record("myid", myId.send?.text === "Ваш Telegram ID: 777001" && !String(myId.send?.text || "").includes("100000001") && !myId.photo, myId.send?.text || "");
 const menu = menuButton("https://elfinmappz.onrender.com");
 record("menu-button", menu?.type === "web_app" && menu.text === "Магазин" && menu.web_app.url === "https://elfinmappz.onrender.com" && menuButton("http://127.0.0.1:5173") === null, menu?.web_app?.url || "");
 

@@ -424,7 +424,7 @@ async function route(user, data, ctx, state) {
 
 function commandOf(text) {
   const word = String(text || "").trim().split(/\s+/)[0].split("@")[0].toLowerCase();
-  if (word === "/start" || word === "/shop" || word === "/orders" || word === "/profile" || word === "/help" || word === "/admin" || word === "/courier") return word;
+  if (word === "/start" || word === "/shop" || word === "/orders" || word === "/profile" || word === "/help" || word === "/admin" || word === "/courier" || word === "/myid") return word;
   return "";
 }
 
@@ -471,6 +471,11 @@ export async function handleUpdate(update, ctx) {
   const state = session(chatId);
   const command = commandOf(message.text);
   if (command) state.pending = null;
+  if (command === "/myid") {
+    const ownId = String(message.from?.id ?? "");
+    const text = /^\d{1,20}$/.test(ownId) ? `Ваш Telegram ID: ${ownId}` : "Telegram ID не получен.";
+    return { send: { chatId, text, rows: [] } };
+  }
   let screen;
   if (command === "/start" && user.status !== "courier") {
     const payload = startArg(message.text);
@@ -577,6 +582,7 @@ export const commands = [
   { command: "orders", description: "Мои заказы" },
   { command: "courier", description: "Панель курьера" },
   { command: "help", description: "Помощь" },
+  { command: "myid", description: "Показать свой Telegram ID" },
 ];
 
 export function sameCopyKeys() {

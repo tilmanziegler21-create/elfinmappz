@@ -13,6 +13,7 @@ export function bindNoticeRecipient(notice, recipient) {
   if (!notice || notice.sent) return notice;
   const tg = String(recipient || "").trim();
   if (!/^\d+$/.test(tg)) return notice;
+  if (notice.recipient !== tg) notice.attempts = 0;
   notice.recipient = tg;
   notice.tgId = tg;
   if (notice.last_error === "NO_RECIPIENT" || notice.last_error === "TEST_RECIPIENT_BLOCKED") notice.last_error = "";
@@ -84,6 +85,7 @@ export async function trySendNotice(notice, send) {
     if (ok) {
       notice.status = "sent";
       notice.sent = true;
+      notice.sent_at = new Date().toISOString();
       notice.last_error = "";
     } else {
       notice.status = "queued";

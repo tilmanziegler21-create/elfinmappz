@@ -23,7 +23,7 @@ import {
   withOrderLock,
   workbook,
 } from "./store.js";
-import { readHamburgSources } from "./hhRead.js";
+import { clearHamburgCache, readHamburgSources } from "./hhRead.js";
 import { hhTabReport, listSheetTitles, loadServiceAccount, sheetCode, sheetTabs, spreadsheetMeta } from "./sheetsRead.js";
 import { withMedia } from "./productMedia.js";
 import { bindNoticeRecipient, enqueueNotice, telegramTestMode, trySendNotice } from "./notices.js";
@@ -786,6 +786,7 @@ function orderNoticeFact(order, couriers) {
     orderNotice: notice ? noticeResultCode(notice) : "none",
     orderHttp: Number(notice?.http_status || 0),
     messageId: Number.isInteger(messageId) && messageId > 0 ? messageId : 0,
+    sentAt: /^\d{4}-\d{2}-\d{2}T/.test(String(notice?.sent_at || "")) ? String(notice.sent_at) : "",
   };
 }
 
@@ -1781,6 +1782,8 @@ const noticeRetryLog = new Map();
 
 async function retryOpenNotices() {
   if (!process.env.TELEGRAM_BOT_TOKEN) return;
+  clearHamburgCache();
+  courierTgCache = { at: 0, value: courierTgCache.value };
   const pending = db().notices.filter((notice) => !notice.sent && notice.status !== "sent" && Number(notice.attempts || 0) < 5 && !(notice.status === "blocked" && telegramTestMode()));
   for (const notice of pending) {
     const orderId = String(notice.order_id || "").split(":")[0];
