@@ -10,7 +10,7 @@ delete process.env.TELEGRAM_TEST_IDS;
 
 const { copyKeys, t } = await import("./botCopy.js");
 const { commands, handleUpdate, menuButton, onceUpdate, parseUpdate, startLogoFile } = await import("./bot.js");
-const { enqueueNotice, trySendNotice } = await import("./notices.js");
+const { bindNoticeRecipient, enqueueNotice, telegramTestMode, trySendNotice } = await import("./notices.js");
 
 const checks = [];
 function record(id, ok, detail) {
@@ -276,7 +276,16 @@ await trySendNotice(liveNotice, async () => {
   liveCalls += 1;
   return true;
 });
-record("notice-open", liveNotice.sent === true && liveCalls === 1, liveNotice.status);
+record("notice-open", liveNotice.sent === true && liveCalls === 1 && telegramTestMode() === false, liveNotice.status);
+const rebound = enqueueNotice({ recipient: "", text: "Новый заказ ORD-13", orderId: "ORD-13", kind: "courier" });
+bindNoticeRecipient(rebound, "77");
+const again = enqueueNotice({ recipient: "77", text: "Новый заказ ORD-13", orderId: "ORD-13", kind: "courier" });
+let reboundCalls = 0;
+await trySendNotice(rebound, async () => {
+  reboundCalls += 1;
+  return { ok: true, messageId: 15 };
+});
+record("notice-rebind", again === rebound && rebound.sent === true && rebound.telegram_message_id === 15 && reboundCalls === 1, String(rebound.telegram_message_id || 0));
 process.env.TELEGRAM_TEST_MODE = "1";
 const missing = enqueueNotice({ recipient: "", text: "Новый заказ ORD-10", orderId: "ORD-10", kind: "courier" });
 let missingCalls = 0;

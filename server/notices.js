@@ -9,10 +9,29 @@ function allowed(recipient) {
   return new Set(String(process.env.TELEGRAM_TEST_IDS || "").split(",").map((item) => item.trim()).filter(Boolean)).has(recipient);
 }
 
+export function bindNoticeRecipient(notice, recipient) {
+  if (!notice || notice.sent) return notice;
+  const tg = String(recipient || "").trim();
+  if (!/^\d+$/.test(tg)) return notice;
+  notice.recipient = tg;
+  notice.tgId = tg;
+  if (notice.last_error === "NO_RECIPIENT" || notice.last_error === "TEST_RECIPIENT_BLOCKED") notice.last_error = "";
+  if (notice.status === "blocked") notice.status = "queued";
+  return notice;
+}
+
 export function enqueueNotice({ recipient, text, orderId, kind }) {
   const id = `${kind}:${orderId || "none"}:${recipient || "none"}`;
   const existing = db().notices.find((item) => item.id === id);
   if (existing) return existing;
+  if (kind === "courier" && orderId) {
+    const prior = db().notices.find((item) => !item.sent && item.order_id === orderId && (item.kind === "courier" || String(item.id || "").startsWith(`courier:${orderId}:`)));
+    if (prior) {
+      bindNoticeRecipient(prior, recipient);
+      persist();
+      return prior;
+    }
+  }
   const notice = {
     id,
     notification_id: id,

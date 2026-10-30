@@ -26,7 +26,7 @@ import {
 import { readHamburgSources } from "./hhRead.js";
 import { hhTabReport, listSheetTitles, loadServiceAccount, sheetCode, sheetTabs, spreadsheetMeta } from "./sheetsRead.js";
 import { withMedia } from "./productMedia.js";
-import { enqueueNotice, telegramTestMode, trySendNotice } from "./notices.js";
+import { bindNoticeRecipient, enqueueNotice, telegramTestMode, trySendNotice } from "./notices.js";
 import { httpsUrl, onceUpdate } from "./bot.js";
 import { language } from "./botCopy.js";
 import { configureBot, dispatchUpdate, runPolling, telegramProbeState } from "./botPoll.js";
@@ -759,22 +759,47 @@ function refuseEphemeralOrders(req, res, next) {
   next();
 }
 
-function latestCheckoutFact() {
+function latestCheckoutFact(couriers = []) {
   const orders = Object.values(db().orders || {}).filter((item) => item && item.id);
   const latest = orders.sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")))[0];
-  if (!latest) return { orderId: "", orderStatus: "", courierId: "", orderNotice: "none", orderHttp: 0, orderCount: 0 };
-  const notice = (db().notices || []).find((item) => item.order_id === latest.id && String(item.id || "").startsWith("courier:"));
+  const openOrders = orders
+    .filter((order) => ["pending", "assigned", "picked_up"].includes(normalizeStatus(order.status)))
+    .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")))
+    .slice(0, 8)
+    .map((order) => orderNoticeFact(order, couriers));
+  if (!latest) return { orderId: "", orderStatus: "", courierId: "", orderNotice: "none", orderHttp: 0, orderCount: 0, recipientAllowed: "no_recipient", messageId: 0, openOrders };
+  const fact = orderNoticeFact(latest, couriers);
+  return { ...fact, orderCount: orders.length, openOrders };
+}
+
+function orderNoticeFact(order, couriers) {
+  const courier = couriers.find((item) => item.courier_id === order.courier_id);
+  const notice = (db().notices || []).find((item) => item.order_id === order.id && (item.kind === "courier" || String(item.id || "").startsWith("courier:")));
+  const messageId = Number(notice?.telegram_message_id);
+  const tg = String(courier?.tg_id || "").trim();
   return {
-    orderId: String(latest.id).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 40),
-    orderStatus: String(latest.status || "").replace(/[^a-z_]/g, "").slice(0, 20),
-    courierId: String(latest.courier_id || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 32),
+    orderId: String(order.id).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 40),
+    orderStatus: String(order.status || "").replace(/[^a-z_]/g, "").slice(0, 20),
+    courierId: String(order.courier_id || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 32),
+    courierTg: courier ? tgPresence(courier.tg_id) : "absent",
+    recipientAllowed: !/^\d+$/.test(tg) ? "no_recipient" : (telegramTestMode() ? (new Set(String(process.env.TELEGRAM_TEST_IDS || "").split(",").map((item) => item.trim()).filter(Boolean)).has(tg) ? "yes" : "no") : "yes"),
     orderNotice: notice ? noticeResultCode(notice) : "none",
     orderHttp: Number(notice?.http_status || 0),
-    orderCount: orders.length,
+    messageId: Number.isInteger(messageId) && messageId > 0 ? messageId : 0,
   };
 }
 
 let courierTgCache = { at: 0, value: { "C-001": "unread", "C-002": "unread" } };
+
+async function courierRowsForReady() {
+  if (useLocalCatalog()) return workbook().couriers;
+  try {
+    const data = await readHamburgSources();
+    return data.couriers || [];
+  } catch {
+    return workbook().couriers;
+  }
+}
 
 async function courierTgPresence() {
   if (Date.now() - courierTgCache.at < 60_000) return courierTgCache.value;
@@ -795,7 +820,8 @@ async function courierTgPresence() {
 app.get("/api/ready", async (_req, res) => {
   const telegram = process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_WEBHOOK_SECRET ? "configured" : "not configured";
   const probe = telegramProbeState();
-  const checkout = latestCheckoutFact();
+  const courierRows = await courierRowsForReady();
+  const checkout = latestCheckoutFact(courierRows);
   const couriers = await courierTgPresence();
   const testIds = String(process.env.TELEGRAM_TEST_IDS || "").split(",").map((item) => item.trim()).filter(Boolean);
   res.json({
@@ -817,6 +843,12 @@ app.get("/api/ready", async (_req, res) => {
     courierTgC001: couriers["C-001"],
     courierTgC002: couriers["C-002"],
     testMode: telegramTestMode() ? "on" : "off",
+    testModeEffective: telegramTestMode() ? "on" : "off",
+    testModeValue: ["", "0", "1", "false", "true", "off", "on", "no", "yes"].includes(String(process.env.TELEGRAM_TEST_MODE ?? "").trim().toLowerCase()) ? (String(process.env.TELEGRAM_TEST_MODE ?? "").trim().toLowerCase() || "empty") : "other",
+    allowedRecipientCount: testIds.length,
+    recipientAllowed: checkout.recipientAllowed,
+    messageId: checkout.messageId,
+    openOrders: checkout.openOrders,
     testIds: testIds.length ? "set" : "empty",
     sheets: await sheetsReady(),
     database: storageMode(),
@@ -1740,15 +1772,32 @@ async function sendStoredNotice(item) {
   });
   const data = await response.json().catch(() => ({}));
   const description = response.ok ? "" : String(data?.description || "");
+  item.http_status = response.status;
   return { ok: response.ok, code: response.ok ? "" : telegramFailureCode(response.status, description), messageId: data?.result?.message_id };
 }
 
 let noticeRetry = null;
+const noticeRetryLog = new Map();
 
 async function retryOpenNotices() {
   if (!process.env.TELEGRAM_BOT_TOKEN) return;
   const pending = db().notices.filter((notice) => !notice.sent && notice.status !== "sent" && Number(notice.attempts || 0) < 5 && !(notice.status === "blocked" && telegramTestMode()));
-  for (const notice of pending) await trySendNotice(notice, sendStoredNotice);
+  for (const notice of pending) {
+    const orderId = String(notice.order_id || "").split(":")[0];
+    const order = orderId ? db().orders[orderId] : null;
+    if (order && (notice.kind === "courier" || String(notice.id || "").startsWith("courier:"))) {
+      const courier = await courierRecord(order.courier_id);
+      bindNoticeRecipient(notice, courier?.tg_id);
+    }
+    await trySendNotice(notice, sendStoredNotice);
+    const code = notice.sent ? "SENT" : (notice.last_error || notice.status || "HELD");
+    const seen = `${code}:${notice.telegram_message_id || 0}`;
+    if (noticeRetryLog.get(notice.id) !== seen) {
+      noticeRetryLog.set(notice.id, seen);
+      const safeOrder = orderId.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 40);
+      console.log(`Notice retry order=${safeOrder} code=${code} http=${Number(notice.http_status || 0)} message=${Number(notice.telegram_message_id || 0)}`);
+    }
+  }
 }
 
 function scheduleNoticeRetry() {
