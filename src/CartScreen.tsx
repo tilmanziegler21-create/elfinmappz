@@ -103,14 +103,16 @@ export function CartScreen({
                   variants={cardItem}
                   exit={reduce ? undefined : favoriteExit}
                   transition={{ duration: 0.28, ease }}
-                  layout
                 >
                   <button type="button" className="cart-open" onClick={() => onOpen(line.product.id)}>
                     <span className="cart-thumb" aria-hidden="true">
-                      <span className="mark" />
+                      {line.product.catalogImage
+                        ? <img src={line.product.catalogImage} alt="" />
+                        : <span className="mark" />}
                     </span>
                     <span className="cart-copy">
-                      <span className="cart-name">{cartTitle(line.product, line.variant)}</span>
+                      <span className="cart-brand">{line.product.brand || line.product.name}</span>
+                      <span className="cart-name" title={cartTitle(line.product, line.variant)}>{cartDetail(line.product, line.variant)}</span>
                       <span className="cart-meta">
                         {euro(line.variant.price, money)}
                       </span>
@@ -197,6 +199,16 @@ export function CartScreen({
       ) : null}
     </div>
   );
+}
+
+function cartDetail(product: { brand?: string; name?: string; flavor?: string }, variant: { label?: string }) {
+  const full = cartTitle(product, variant);
+  const brand = (product.brand || product.name || "").trim();
+  if (brand && full.toLowerCase().startsWith(brand.toLowerCase())) {
+    const rest = full.slice(brand.length).replace(/^[\s—\-–:·/]+/, "");
+    return rest || full;
+  }
+  return full;
 }
 
 function positionWord(count: number, lang: string) {

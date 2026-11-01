@@ -250,7 +250,7 @@ export function CheckoutScreen({
         </div>
         <div className="checkout-card">
           {lines.map((line) => (
-            <div className="checkout-line" key={line.variant.id}>
+            <div className="checkout-line" key={line.key}>
               <span>{cartTitle(line.product, line.variant)}</span>
               <strong>{line.qty}</strong>
             </div>
