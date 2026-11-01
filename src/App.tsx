@@ -14,7 +14,7 @@ import { CourierScreen } from "./CourierScreen";
 import { OrdersScreen } from "./OrdersScreen";
 import { CountBump } from "./CountBump";
 import { ProductScreen } from "./ProductScreen";
-import { mediaByBrand } from "./productMedia";
+import { mediaByBrand, mediaBySku } from "./productMedia";
 import { CART_KEY, clampLineQty, defaultVariant, euro, findProduct, lineKey, products, readLooseCart, sanitizeCart, setSheetCatalog, type Availability, type Product, type Variant } from "./products";
 import { sectionItem, sectionList, tapSpring } from "./motion";
 import { prewarmImages } from "./ImagePreloader";
@@ -68,6 +68,39 @@ function productSlug(name: string) {
   return slug || "item";
 }
 
+function productFromRows(items: SheetRow[], name: string, image?: string, id?: string): Product {
+  const flavors = items.map((row) => (row.name || "").trim());
+  const variants: Variant[] = items.map((row) => {
+    const closed = row.active === false || row.stock <= 0;
+    const availability: Availability = closed ? "out" : row.stock <= 2 ? "low" : "in";
+    const flavor = (row.name || row.sku).trim();
+    const repeated = flavors.filter((item) => item === flavor).length > 1;
+    return {
+      id: row.sku || flavor,
+      label: repeated ? `${flavor} · ${row.brand}` : flavor,
+      price: row.price,
+      availability,
+      stock: closed ? 0 : row.stock,
+    };
+  }).sort((a, b) => a.label.localeCompare(b.label, "ru"));
+  const open = variants.find((item) => item.availability !== "out" && item.stock > 0);
+  const stock = variants.reduce((sum, item) => sum + item.stock, 0);
+  return {
+    id: id || productSlug(name),
+    name,
+    flavor: variants.length === 1 ? variants[0].label : flavorCount(variants.length),
+    brand: lineName(items[0].brand || ""),
+    category: items[0].category,
+    price: open?.price ?? variants[0]?.price ?? 0,
+    availability: stock <= 0 ? "out" : open && open.stock <= 2 && variants.filter((item) => item.stock > 0).length === 1 ? "low" : "in",
+    featured: false,
+    description: "",
+    catalogImage: image,
+    heroImage: image,
+    variants,
+  };
+}
+
 function groupSheetRows(rows: SheetRow[]): Product[] {
   const groups = new Map<string, SheetRow[]>();
   for (const row of rows) {
@@ -76,40 +109,18 @@ function groupSheetRows(rows: SheetRow[]): Product[] {
     list.push(row);
     groups.set(name, list);
   }
-  return [...groups.values()].map((items) => {
+  const grouped: Product[] = [];
+  for (const items of groups.values()) {
     const name = lineName(items[0].brand || "");
-    const flavors = items.map((row) => (row.name || "").trim());
-    const variants: Variant[] = items.map((row) => {
-      const closed = row.active === false || row.stock <= 0;
-      const availability: Availability = closed ? "out" : row.stock <= 2 ? "low" : "in";
-      const flavor = (row.name || row.sku).trim();
-      const repeated = flavors.filter((item) => item === flavor).length > 1;
-      return {
-        id: row.sku || flavor,
-        label: repeated ? `${flavor} · ${row.brand}` : flavor,
-        price: row.price,
-        availability,
-        stock: closed ? 0 : row.stock,
-      };
-    }).sort((a, b) => a.label.localeCompare(b.label, "ru"));
-    const open = variants.find((item) => item.availability !== "out" && item.stock > 0);
-    const stock = variants.reduce((sum, item) => sum + item.stock, 0);
-    const image = mediaByBrand(name)?.image;
-    return {
-      id: productSlug(name),
-      name,
-      flavor: variants.length === 1 ? variants[0].label : flavorCount(variants.length),
-      brand: name,
-      category: items[0].category,
-      price: open?.price ?? variants[0]?.price ?? 0,
-      availability: stock <= 0 ? "out" : open && open.stock <= 2 && variants.filter((item) => item.stock > 0).length === 1 ? "low" : "in",
-      featured: false,
-      description: "",
-      catalogImage: image,
-      heroImage: image,
-      variants,
-    };
-  });
+    const own = items.filter((row) => mediaBySku(row.sku));
+    const shared = items.filter((row) => !mediaBySku(row.sku));
+    for (const row of own) {
+      const media = mediaBySku(row.sku);
+      grouped.push(productFromRows([row], (row.name || name).trim(), media?.image, row.sku.toLowerCase()));
+    }
+    if (shared.length) grouped.push(productFromRows(shared, name, mediaByBrand(name)?.image));
+  }
+  return grouped;
 }
 
 const AGE_KEY = "elfin-age";

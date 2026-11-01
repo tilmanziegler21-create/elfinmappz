@@ -46,5 +46,37 @@
     "scene": "pod-float",
     "accent": "pod",
     "category": "pods"
+  },
+  "xros-6-mini": {
+    "sku": "",
+    "image": "/assets/products/pods/xros-6-mini.png",
+    "imageType": "transparent",
+    "scene": "pod-float",
+    "accent": "pod",
+    "category": "pods"
+  },
+  "pd-0013": {
+    "sku": "PD-0013",
+    "image": "/assets/products/pods/xros-08-mesh-4pcs.png",
+    "imageType": "transparent",
+    "scene": "pod-float",
+    "accent": "pod",
+    "category": "pods"
+  },
+  "elf-bc-45000": {
+    "sku": "",
+    "image": "/assets/products/devices/elf-bc-45000.png",
+    "imageType": "transparent",
+    "scene": "device-float",
+    "accent": "frost",
+    "category": "devices"
+  },
+  "vapsolo-80k": {
+    "sku": "",
+    "image": "/assets/products/devices/vapsolo-quads-80k.png",
+    "imageType": "transparent",
+    "scene": "device-float",
+    "accent": "cold",
+    "category": "devices"
   }
 }

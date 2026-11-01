@@ -36,7 +36,10 @@ const brandMedia: Array<{ test: (brand: string) => boolean; id: string }> = [
   { test: (brand) => brand.startsWith("CHASER"), id: "chaser-lux-turbo-mint" },
   { test: (brand) => brand.startsWith("HQD"), id: "hqd-grapey" },
   { test: (brand) => brand.startsWith("VOZOL"), id: "vozol-strawberry-ice" },
+  { test: (brand) => brand.includes("XROS 6"), id: "xros-6-mini" },
   { test: (brand) => brand.includes("XROS 5"), id: "xros-5-mini" },
+  { test: (brand) => brand.includes("ELF BC 45000"), id: "elf-bc-45000" },
+  { test: (brand) => brand.includes("VAPSOLO 80K"), id: "vapsolo-80k" },
 ];
 
 export function mediaByBrand(brand: string): MediaEntry | null {
