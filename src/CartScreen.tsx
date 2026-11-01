@@ -5,6 +5,7 @@ import { cartTitle } from "./lineLabel";
 import { cartEntries, cartMoney, euro } from "./products";
 import { favoriteExit } from "./productMotion";
 import { cardItem, cardList, ease, tapSpring } from "./motion";
+import { moneyLocale, useI18n } from "./i18n";
 
 export function CartScreen({
   cart,
@@ -26,6 +27,8 @@ export function CartScreen({
   onContinue: () => void;
 }) {
   const reduce = useReducedMotion();
+  const { t, lang } = useI18n();
+  const money = moneyLocale(lang);
   const lines = cartEntries(cart);
   const units = lines.reduce((sum, line) => sum + line.qty, 0);
   const total = cartMoney(cart);
@@ -76,10 +79,10 @@ export function CartScreen({
       {lines.length === 0 && revealEmpty ? (
         <EmptyState
           variant="cart"
-          title="Корзина пуста"
-          description="Здесь появятся выбранные товары."
-          primaryAction={{ label: "В каталог", onClick: onCatalog }}
-          secondaryAction={undo ? { label: "Вернуть", onClick: restore } : undefined}
+          title={t("cart.empty")}
+          description={t("cart.emptyText")}
+          primaryAction={{ label: t("cart.toCatalog"), onClick: onCatalog }}
+          secondaryAction={undo ? { label: t("cart.restore"), onClick: restore } : undefined}
         />
       ) : lines.length > 0 || !revealEmpty ? (
         <motion.div
@@ -88,7 +91,7 @@ export function CartScreen({
           initial={reduce ? false : "hidden"}
           animate="show"
         >
-          {adjusted ? <p className="cart-note">Недоступные позиции убраны.</p> : null}
+          {adjusted ? <p className="cart-note">{t("cart.adjusted")}</p> : null}
           <AnimatePresence initial={false}>
             {lines.map((line) => {
               const blocked = line.variant.availability === "out" || line.variant.stock <= 0;
@@ -109,7 +112,7 @@ export function CartScreen({
                     <span className="cart-copy">
                       <span className="cart-name">{cartTitle(line.product, line.variant)}</span>
                       <span className="cart-meta">
-                        {euro(line.variant.price)}
+                        {euro(line.variant.price, money)}
                       </span>
                     </span>
                   </button>
@@ -119,7 +122,7 @@ export function CartScreen({
                     onClick={() => remove(line.key)}
                     whileTap={reduce ? undefined : { scale: 0.96 }}
                     transition={tapSpring}
-                    aria-label={`Убрать ${line.product.name}, ${line.variant.label}`}
+                    aria-label={t("cart.remove", { name: line.product.name, variant: line.variant.label })}
                   >
                     ×
                   </motion.button>
@@ -131,7 +134,7 @@ export function CartScreen({
                         disabled={line.qty <= 1}
                         whileTap={reduce || line.qty <= 1 ? undefined : { scale: 0.96 }}
                         transition={tapSpring}
-                        aria-label="Меньше"
+                        aria-label={t("product.less")}
                       >
                         −
                       </motion.button>
@@ -149,12 +152,12 @@ export function CartScreen({
                         disabled={blocked || atLimit}
                         whileTap={reduce || blocked || atLimit ? undefined : { scale: 0.96 }}
                         transition={tapSpring}
-                        aria-label="Больше"
+                        aria-label={t("product.more")}
                       >
                         +
                       </motion.button>
                     </div>
-                    <Amount value={euro(line.total)} />
+                    <Amount value={euro(line.total, money)} />
                   </div>
                 </motion.article>
               );
@@ -165,22 +168,22 @@ export function CartScreen({
 
       {undo && lines.length > 0 ? (
         <div className="cart-undo" role="status">
-          <span>Позиция убрана</span>
-          <button type="button" onClick={restore}>Вернуть</button>
+          <span>{t("cart.removed")}</span>
+          <button type="button" onClick={restore}>{t("cart.restore")}</button>
         </div>
       ) : null}
 
       {lines.length > 0 ? (
         <div className="cart-bar">
           <div className="cart-sum">
-            <span>{lines.length} {positionWord(lines.length)} · {units} шт.</span>
-            <Amount value={euro(total)} />
+            <span>{lines.length} {positionWord(lines.length, lang)} · {units} {t("cart.units")}</span>
+            <Amount value={euro(total, money)} />
           </div>
           <div className="cart-sum">
-            <span>Итого</span>
-            <Amount value={euro(total)} />
+            <span>{t("cart.total")}</span>
+            <Amount value={euro(total, money)} />
           </div>
-          <p className="cart-caption">Предварительно, до подтверждения складом.</p>
+          <p className="cart-caption">{t("cart.note")}</p>
           <motion.button
             type="button"
             className="btn btn-primary"
@@ -188,7 +191,7 @@ export function CartScreen({
             whileTap={reduce ? undefined : { scale: 0.96 }}
             transition={tapSpring}
           >
-            К оформлению
+            {t("cart.checkout")}
           </motion.button>
         </div>
       ) : null}
@@ -196,11 +199,16 @@ export function CartScreen({
   );
 }
 
-function positionWord(count: number) {
+function positionWord(count: number, lang: string) {
   const mod10 = count % 10;
   const mod100 = count % 100;
-  if (mod10 === 1 && mod100 !== 11) return "позиция";
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return "позиции";
+  const one = mod10 === 1 && mod100 !== 11;
+  const few = mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14);
+  if (lang === "uk") return one ? "позиція" : few ? "позиції" : "позицій";
+  if (lang === "de") return count === 1 ? "Position" : "Positionen";
+  if (lang === "en") return count === 1 ? "item" : "items";
+  if (one) return "позиция";
+  if (few) return "позиции";
   return "позиций";
 }
 

@@ -18,6 +18,7 @@ import { mediaByBrand } from "./productMedia";
 import { CART_KEY, clampLineQty, defaultVariant, euro, findProduct, lineKey, products, readLooseCart, sanitizeCart, setSheetCatalog, type Availability, type Product, type Variant } from "./products";
 import { sectionItem, sectionList, tapSpring } from "./motion";
 import { prewarmImages } from "./ImagePreloader";
+import { languageName, languages, useI18n, type Lang } from "./i18n";
 
 type Screen = "home" | "catalog" | "cart" | "orders" | "profile" | "checkout" | "courier" | "admin";
 
@@ -163,11 +164,12 @@ export function App() {
   const [authError, setAuthError] = useState<string | null>(null);
   const warmBoot = useRef(typeof sessionStorage !== "undefined" && sessionStorage.getItem(WARM_KEY) === "1");
   const marksRef = useRef<BootMarks>({ telegram: false, config: false, auth: false, catalog: false, images: false });
+  const { t } = useI18n();
   const cartCount = useMemo(() => Object.values(cart).reduce((sum, count) => sum + count, 0), [cart]);
   const compact = age === "ok" && screen !== "home";
-  const header = age === "ok" ? copy[screen] : age === "denied"
-    ? { kicker: "ELFIN Market", title: "Закрыто", lede: "Только с 18 лет" }
-    : { kicker: "ELFIN MARKET", title: "ELFIN", lede: "Подтвердите возраст" };
+  const header = age === "ok" ? { ...copy[screen], title: screen === "home" ? "ELFIN" : t(`header.${screen}`) } : age === "denied"
+    ? { kicker: "ELFIN Market", title: t("age.closedTitle"), lede: t("age.headerLede") }
+    : { kicker: "ELFIN MARKET", title: "ELFIN", lede: t("age.pendingLede") };
 
   const view = productId ? "product" : screen;
   const scrolls = useRef<Partial<Record<Screen, number>>>({});
@@ -255,7 +257,7 @@ export function App() {
             const message = reason instanceof Error ? reason.message : "";
             setSession(null);
             setAuthPhase(message === "Expired initData" ? "expired" : "error");
-            setAuthError("Не удалось подтвердить вход через Telegram. Откройте приложение заново.");
+            setAuthError(t("checkout.auth"));
           }
           if (alive) setAuthReady(true);
           return;
@@ -492,22 +494,22 @@ export function App() {
             {age === "pending" ? (
               <>
                 <p className="panel-text">
-                  Магазин доступен только лицам старше 18 лет.
+                  {t("age.text")}
                 </p>
                 <Press className="btn btn-primary" onClick={allow}>
-                  Мне есть 18
+                  {t("age.yes")}
                 </Press>
                 <Press className="btn btn-ghost" onClick={() => setAge("denied")}>
-                  Мне нет 18
+                  {t("age.no")}
                 </Press>
               </>
             ) : (
               <>
                 <p className="panel-text">
-                  Доступ закрыт. Магазин только для совершеннолетних.
+                  {t("age.closed")}
                 </p>
                 <Press className="btn btn-ghost" onClick={() => setAge("pending")}>
-                  Вернуться
+                  {t("age.back")}
                 </Press>
               </>
             )}
@@ -547,7 +549,7 @@ export function App() {
             ) : null}
             {heldRef.current.includes("orders") ? (
               <section className={view === "orders" ? "panel panel-cart is-current" : "panel panel-cart"} hidden={view !== "orders"}>
-                {session ? <OrdersScreen token={session.token} city={session.city} couriers={couriers} botUrl={botUrl} onCatalog={() => showScreen("catalog")} /> : <p className="empty-text">{authPhase === "initializing" ? "Подтверждаем Telegram." : "История откроется после входа."}</p>}
+                {session ? <OrdersScreen token={session.token} city={session.city} couriers={couriers} botUrl={botUrl} onCatalog={() => showScreen("catalog")} /> : <p className="empty-text">{authPhase === "initializing" ? t("checkout.checking") : t("orders.needAuth")}</p>}
               </section>
             ) : null}
             {heldRef.current.includes("profile") ? (
@@ -601,7 +603,7 @@ export function App() {
       </div>
 
       {age === "ok" ? (
-          <nav className="nav" aria-label="Разделы" inert={checkoutOpen ? true : undefined}>
+          <nav className="nav" aria-label={t("nav.label")} inert={checkoutOpen ? true : undefined}>
             {screens.map((item) => {
               const active = item.id === screen || (screen === "checkout" && item.id === "cart") || ((screen === "courier" || screen === "admin") && item.id === "profile");
               return (
@@ -623,8 +625,8 @@ export function App() {
                 >
                   {active ? <span className="nav-pill" /> : null}
                   <Icon name={item.icon} />
-                  <span>{item.label}</span>
-                  {item.id === "cart" && cartCount > 0 ? <CountBump className="nav-badge" value={cartCount} label={`В корзине ${cartCount}`} /> : null}
+                  <span>{t(`nav.${item.id}`)}</span>
+                  {item.id === "cart" && cartCount > 0 ? <CountBump className="nav-badge" value={cartCount} label={t("home.cartCount", { count: cartCount })} /> : null}
                 </Press>
               );
             })}
@@ -632,8 +634,8 @@ export function App() {
         ) : null}
       {checkoutHeld ? (
         <div className={checkoutOpen ? "sheet-layer is-open" : "sheet-layer"} aria-hidden={!checkoutOpen} inert={!checkoutOpen ? true : undefined}>
-          <button type="button" className="sheet-scrim" aria-label="Закрыть оформление" onClick={() => setCheckoutOpen(false)} />
-          <div className="sheet-panel" role="dialog" aria-label="Оформление заказа">
+          <button type="button" className="sheet-scrim" aria-label={t("checkout.closeSheet")} onClick={() => setCheckoutOpen(false)} />
+          <div className="sheet-panel" role="dialog" aria-label={t("checkout.title")}>
             <CheckoutScreen
               cart={cart}
               token={session?.token ?? ""}
@@ -709,6 +711,7 @@ function Home({
   live: boolean;
 }) {
   const reduce = useReducedMotion();
+  const { t } = useI18n();
   const [terms, setTerms] = useState(false);
   const cards = live ? shelf : products.filter((item) => shopSection(item.category)).slice(0, 4);
   const stage = typeof document !== "undefined" ? document.querySelector(".stage") : null;
@@ -728,7 +731,7 @@ function Home({
         <button
           type="button"
           className="catalog-icon home-cart"
-          aria-label={cartCount > 0 ? `Корзина, ${cartCount}` : "Корзина"}
+          aria-label={cartCount > 0 ? t("home.cartCount", { count: cartCount }) : t("home.cart")}
           onClick={onCart}
         >
           <BagMark />
@@ -737,16 +740,16 @@ function Home({
       </motion.div>
       <motion.section className="home-banner" variants={sectionItem}>
         <p className="home-kicker">ELFIN Market · Hamburg</p>
-        <h2>Всё в одном месте</h2>
-        <p>Магазин, получение и товары Hamburg.</p>
+        <h2>{t("home.together")}</h2>
+        <p>{t("home.lead")}</p>
         <button type="button" className="home-terms-link" onClick={() => setTerms(true)}>
-          Подробнее об условиях
+          {t("home.terms")}
         </button>
       </motion.section>
       <motion.div className="catalog home-vitrine" variants={sectionItem}>
         <div className="home-shelf-head">
-          <h2>Каталог {live ? null : <span className="home-demo">DEMO</span>}</h2>
-          <button type="button" className="home-all" onClick={() => onOpen("catalog")}>Смотреть всё</button>
+          <h2>{t("home.catalog")} {live ? null : <span className="home-demo">{t("home.demo")}</span>}</h2>
+          <button type="button" className="home-all" onClick={() => onOpen("catalog")}>{t("home.all")}</button>
         </div>
         <div className="shelf">
           {cards.map((item) => (
@@ -762,11 +765,11 @@ function Home({
       {terms && stage
         ? createPortal(
             <div className="terms-layer">
-              <button type="button" className="terms-scrim" aria-label="Закрыть условия" onClick={() => setTerms(false)} />
+              <button type="button" className="terms-scrim" aria-label={t("terms.dismiss")} onClick={() => setTerms(false)} />
               <div className="terms-card" role="dialog" aria-labelledby="home-terms-title">
-                <h2 id="home-terms-title">Условия</h2>
-                <p>Только с 18 лет. Магазин работает в Hamburg. Оплата при встрече. Скидки за повторные покупки и сравнение цен сейчас не действуют.</p>
-                <button type="button" className="terms-close" onClick={() => setTerms(false)}>Закрыть</button>
+                <h2 id="home-terms-title">{t("terms.title")}</h2>
+                <p>{t("terms.body")}</p>
+                <button type="button" className="terms-close" onClick={() => setTerms(false)}>{t("terms.close")}</button>
               </div>
             </div>,
             stage,
@@ -786,6 +789,7 @@ function BagMark() {
 }
 
 function HomeArt({ item }: { item: Product }) {
+  const { t } = useI18n();
   const [failed, setFailed] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const image = useRef<HTMLImageElement>(null);
@@ -798,7 +802,7 @@ function HomeArt({ item }: { item: Product }) {
       <span className="product-art">
         <span className="mark-fallback">
           <span className="mark" aria-hidden="true" />
-          <span className="mark-note">Нет фото</span>
+          <span className="mark-note">{t("home.noPhoto")}</span>
         </span>
       </span>
     );
@@ -835,43 +839,78 @@ function Profile({
   onRole: (tgId: string) => void;
   roleError?: string | null;
 }) {
+  const { t, lang, setLang } = useI18n();
+  const [langOpen, setLangOpen] = useState(false);
   const verified = Boolean(session && !session.dev && session.user.tgId);
   const facts = [
-    ["Возраст", "подтверждён"],
-    ["Город", "Hamburg"],
-    ["Роль", session?.user.status || "нет сессии"],
-    ["Вход", authPhase === "initializing" ? "проверяем" : verified ? "Telegram" : session?.dev ? "тестовый" : "нет"],
+    [t("profile.age"), t("profile.ageValue")],
+    [t("profile.city"), "Hamburg"],
+    [t("profile.role"), session?.user.status || t("profile.noSession")],
+    [t("profile.entry"), authPhase === "initializing" ? t("profile.checking") : verified ? "Telegram" : session?.dev ? t("profile.test") : t("profile.none")],
   ];
   if (verified && session) {
     const name = [session.user.firstName, session.user.lastName].filter(Boolean).join(" ");
     facts.push(
-      ["Имя", name || "Имя не указано"],
-      ["Username", session.user.username ? `@${session.user.username}` : "Username не установлен"],
+      [t("profile.name"), name || t("profile.noName")],
+      [t("profile.username"), session.user.username ? `@${session.user.username}` : t("profile.noUsername")],
       ["Telegram ID", session.user.tgId],
     );
   }
   const staff = session?.user.status === "courier" || session?.user.status === "admin";
+  const stage = typeof document !== "undefined" ? document.querySelector(".stage") : null;
 
   return (
     <div className="facts">
+      <button type="button" className="lang-entry" onClick={() => setLangOpen(true)}>
+        <span>🌐 {t("profile.languageTitle")}</span>
+        <strong>{languageName[lang]}</strong>
+      </button>
       {facts.map(([label, value]) => (
         <div key={label} className="fact">
           <span>{label}</span>
           <strong>{value}</strong>
         </div>
       ))}
-      {staff ? <Press className="btn btn-ghost" onClick={onCourier}>Панель курьера</Press> : null}
-      {session?.user.status === "admin" ? <Press className="btn btn-ghost" onClick={onAdmin}>Админка</Press> : null}
+      {staff ? <Press className="btn btn-ghost" onClick={onCourier}>{t("profile.courier")}</Press> : null}
+      {session?.user.status === "admin" ? <Press className="btn btn-ghost" onClick={onAdmin}>{t("profile.admin")}</Press> : null}
       {authError ? <p className="checkout-error" role="alert">{authError}</p> : null}
       {roleError ? <p className="checkout-error" role="alert">{roleError}</p> : null}
       {session?.dev ? (
         <div className="choice-row">
-          <button type="button" className="choice" onClick={() => onRole("123456789")}>Покупатель</button>
+          <button type="button" className="choice" onClick={() => onRole("123456789")}>{t("profile.customer")}</button>
           <button type="button" className="choice" onClick={() => onRole("100000001")}>Север</button>
           <button type="button" className="choice" onClick={() => onRole("100000002")}>Иней</button>
-          <button type="button" className="choice" onClick={() => onRole("100000009")}>Админ</button>
+          <button type="button" className="choice" onClick={() => onRole("100000009")}>{t("header.admin")}</button>
         </div>
       ) : null}
+      {langOpen && stage
+        ? createPortal(
+            <div className="sheet-layer is-open">
+              <button type="button" className="sheet-scrim" aria-label={t("terms.close")} onClick={() => setLangOpen(false)} />
+              <div className="sheet-panel lang-sheet" role="dialog" aria-label={t("profile.languageTitle")}>
+                <div className="sheet-head">
+                  <span className="sheet-grip" aria-hidden="true" />
+                  <button type="button" className="sheet-close" onClick={() => setLangOpen(false)}>{t("terms.close")}</button>
+                </div>
+                <div className="sheet-list">
+                  {languages.map((item) => (
+                    <button
+                      key={item}
+                      type="button"
+                      className={item === lang ? "lang-option is-on" : "lang-option"}
+                      aria-pressed={item === lang}
+                      onClick={() => { setLang(item as Lang); setLangOpen(false); }}
+                    >
+                      <span>{item === "ru" ? "🇷🇺" : item === "uk" ? "🇺🇦" : item === "en" ? "🇬🇧" : "🇩🇪"} {languageName[item]}</span>
+                      <strong>{item.toUpperCase()}</strong>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>,
+            stage,
+          )
+        : null}
     </div>
   );
 }

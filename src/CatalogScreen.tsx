@@ -4,11 +4,19 @@ import { EmptyState } from "./EmptyState";
 import { preloadImages } from "./ImagePreloader";
 import { productTap } from "./productMotion";
 import { brandFilters, brandGroup, shopSection } from "./categoryRules";
-import { availabilityLabel, euro, products, unitsFor, type Product } from "./products";
+import { euro, products, unitsFor, type Product } from "./products";
 import { cardItem, cardList, tapSpring } from "./motion";
 import { readSaved, SAVED_EVENT, writeSaved } from "./saved";
+import { useI18n } from "./i18n";
 
 const sections = ["Все", "Жидкости", "POD", "Устройства"] as const;
+
+function sectionName(item: string, t: (key: string) => string) {
+  if (item === "Все") return t("catalog.all");
+  if (item === "Жидкости") return t("catalog.liquids");
+  if (item === "Устройства") return t("catalog.devices");
+  return item;
+}
 const FILTER_KEY = "elfin-catalog-ui";
 
 function readFilters() {
@@ -44,6 +52,7 @@ export function Catalog({
   onRefresh: () => void;
 }) {
   const reduce = useReducedMotion();
+  const { t } = useI18n();
   const initialFilters = useRef(readFilters());
   const [query, setQuery] = useState(initialFilters.current.query);
   const [section, setSection] = useState<(typeof sections)[number]>(initialFilters.current.section);
@@ -127,7 +136,7 @@ export function Catalog({
             type="button"
             className={savedOnly ? "catalog-icon is-on" : "catalog-icon"}
             aria-pressed={savedOnly}
-            aria-label="Избранное"
+            aria-label={t("catalog.saved")}
             onClick={() => setSavedOnly((value) => !value)}
           >
             <HeartIcon filled={savedOnly} />
@@ -140,17 +149,17 @@ export function Catalog({
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Поиск товаров и вкусов"
+            placeholder={t("catalog.placeholder")}
             enterKeyHint="search"
-            aria-label="Поиск"
+            aria-label={t("catalog.search")}
           />
           {query ? (
-            <button type="button" className="search-clear" aria-label="Очистить поиск" onClick={() => setQuery("")}>
+            <button type="button" className="search-clear" aria-label={t("catalog.clear")} onClick={() => setQuery("")}>
               ×
             </button>
           ) : null}
         </label>
-        <div className="cat-chips" role="tablist" aria-label="Разделы">
+        <div className="cat-chips" role="tablist" aria-label={t("nav.label")}>
           {sections.map((item) => (
             <button
               key={item}
@@ -160,12 +169,12 @@ export function Catalog({
               className={item === section ? "cat-chip is-on" : "cat-chip"}
               onClick={() => chooseSection(item)}
             >
-              {item}
+              {sectionName(item, t)}
             </button>
           ))}
         </div>
         {section === "Жидкости" ? (
-          <div className="cat-chips" role="tablist" aria-label="Бренды">
+          <div className="cat-chips" role="tablist" aria-label={t("catalog.brandsLabel")}>
             {["Все бренды", ...brandFilters].map((item) => (
               <button
                 key={item}
@@ -175,7 +184,7 @@ export function Catalog({
                 className={item === brand ? "cat-chip is-on" : "cat-chip"}
                 onClick={() => setBrand(item)}
               >
-                {item}
+                {item === "Все бренды" ? t("catalog.brands") : item}
               </button>
             ))}
           </div>
@@ -188,9 +197,9 @@ export function Catalog({
         <EmptyState
           variant="connectionError"
           size="lg"
-          title="Каталог не загрузился"
-          description="Вкладки Hamburg в таблице не найдены. Данные другого города не показываются."
-          primaryAction={{ label: "Обновить", onClick: refreshCatalog }}
+          title={t("catalog.failTitle")}
+          description={t("catalog.failText")}
+          primaryAction={{ label: t("catalog.refresh"), onClick: refreshCatalog }}
         />
       ) : null}
 
@@ -198,35 +207,35 @@ export function Catalog({
         <EmptyState
           variant="catalog"
           size="lg"
-          title="Каталог пока пуст"
-          description="Доступные позиции появятся здесь после обновления ассортимента."
-          primaryAction={{ label: "Обновить", onClick: refreshCatalog }}
+          title={t("catalog.emptyTitle")}
+          description={t("catalog.emptyText")}
+          primaryAction={{ label: t("catalog.refresh"), onClick: refreshCatalog }}
         />
       ) : null}
 
-      {mode === "demo" ? <p className="catalog-demo">Демо. Цены и остатки Hamburg не подключены.</p> : null}
+      {mode === "demo" ? <p className="catalog-demo">{t("catalog.demoNote")}</p> : null}
 
       {mode !== "error" && mode !== "loading" && !catalogEmpty && visible.length === 0 ? (
         <EmptyState
           variant="search"
           size="sm"
-          title={savedOnly ? "В избранном пока пусто" : inStock && mode === "demo" ? "Склад не подключён" : "Ничего не найдено"}
-          description={savedOnly ? "Отметьте сердце на карточке витрины." : inStock && mode === "demo" ? "Остатки появятся из таблицы Hamburg." : "Попробуй изменить запрос или раздел."}
-          primaryAction={{ label: "Сбросить фильтры", onClick: resetFilters }}
+          title={savedOnly ? t("catalog.noneSaved") : inStock && mode === "demo" ? t("catalog.noStock") : t("catalog.none")}
+          description={savedOnly ? t("catalog.noneSavedText") : inStock && mode === "demo" ? t("catalog.noStockText") : t("catalog.noneText")}
+          primaryAction={{ label: t("catalog.reset"), onClick: resetFilters }}
         />
       ) : null}
 
       {showGrid && (mode === "demo" || mode === "live") ? (
         <section className="catalog-section">
           <div className="catalog-head">
-            <h2 className="section-label">Каталог</h2>
+            <h2 className="section-label">{t("header.catalog")}</h2>
             <button
               type="button"
               className={inStock ? "stock-toggle is-on" : "stock-toggle"}
               aria-pressed={inStock}
               onClick={() => setInStock((value) => !value)}
             >
-              По наличию
+              {t("catalog.byStock")}
             </button>
           </div>
           <ProductGrid items={visible} cart={cart} saved={saved} mode={mode} onAdd={onAdd} onOpen={onOpen} onToggle={toggleSaved} reduce={Boolean(reduce)} />
@@ -255,6 +264,7 @@ function ProductGrid({
   onToggle: (id: string) => void;
   reduce: boolean;
 }) {
+  const { t } = useI18n();
   return (
     <motion.div className="shelf" initial={reduce ? false : "hidden"} animate="show" variants={cardList}>
       {items.map((item) => {
@@ -277,7 +287,7 @@ function ProductGrid({
                 type="button"
                 className={liked ? "card-heart is-on" : "card-heart"}
                 aria-pressed={liked}
-                aria-label={liked ? "Убрать из избранного" : "В избранное"}
+                aria-label={liked ? t("catalog.savedOn") : t("catalog.savedOff")}
                 whileTap={reduce ? undefined : { scale: 0.96 }}
                 transition={tapSpring}
                 onPointerDown={(event) => event.stopPropagation()}
@@ -294,7 +304,7 @@ function ProductGrid({
             <p className="product-price">
               <strong>{demo ? "—" : euro(item.price)}</strong>
             </p>
-            <p className={demo ? "stock" : `stock stock-${item.availability}`}>{demo ? "Демо" : availabilityLabel[item.availability]}</p>
+            <p className={demo ? "stock" : `stock stock-${item.availability}`}>{demo ? t("catalog.demo") : t(`stock.${item.availability}`)}</p>
             <motion.button
               type="button"
               className="btn btn-primary product-cta"
@@ -307,7 +317,7 @@ function ProductGrid({
                 else onAdd(item.id);
               }}
             >
-              {demo ? "Открыть" : chooseFlavor ? "Выбрать вкус" : blocked ? "Нет в наличии" : unitsFor(cart, item.id) ? `В корзине · ${unitsFor(cart, item.id)}` : "В корзину"}
+              {demo ? t("catalog.open") : chooseFlavor ? t("catalog.choose") : blocked ? t("catalog.out") : unitsFor(cart, item.id) ? t("catalog.inCart", { count: unitsFor(cart, item.id) }) : t("catalog.add")}
             </motion.button>
           </motion.article>
         );
@@ -317,6 +327,7 @@ function ProductGrid({
 }
 
 function ProductArt({ item }: { item: Product }) {
+  const { t } = useI18n();
   const [failed, setFailed] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const image = useRef<HTMLImageElement>(null);
@@ -328,7 +339,7 @@ function ProductArt({ item }: { item: Product }) {
     return (
       <span className="mark-fallback">
         <span className="mark" aria-hidden="true" />
-        <span className="mark-note">Нет фото</span>
+        <span className="mark-note">{t("home.noPhoto")}</span>
       </span>
     );
   }

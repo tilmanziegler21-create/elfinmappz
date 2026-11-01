@@ -219,8 +219,8 @@ export const products: Product[] = [
 
 export const categories = ["Все", ...new Set(products.map((item) => sectionLabel(item.category)))];
 
-export function euro(value: number) {
-  return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(value);
+export function euro(value: number, locale = "de-DE") {
+  return new Intl.NumberFormat(locale, { style: "currency", currency: "EUR" }).format(value);
 }
 
 export const availabilityLabel: Record<Availability, string> = {

@@ -8,7 +8,6 @@ import { mediaByBrand, mediaBySku, mediaFor } from "./productMedia";
 import { VariantBottomSheet } from "./VariantBottomSheet";
 import { addPulse, liteMotion, productTap } from "./productMotion";
 import {
-  availabilityLabel,
   defaultVariant,
   euro,
   findProduct,
@@ -18,6 +17,7 @@ import {
 } from "./products";
 import { tapSpring } from "./motion";
 import { readSaved, SAVED_EVENT, writeSaved } from "./saved";
+import { moneyLocale, useI18n } from "./i18n";
 
 type AddResult = "added" | "limit" | "unavailable";
 
@@ -38,7 +38,9 @@ export function ProductScreen({
   const product = findProduct(productId);
   const [variantId, setVariantId] = useState<string | null>(product ? defaultVariant(product)?.id ?? null : null);
   const [qty, setQty] = useState(1);
-  const [note, setNote] = useState<string | null>(null);
+  const { t, lang } = useI18n();
+  const money = moneyLocale(lang);
+  const [note, setNote] = useState<"added" | "limit" | "out" | null>(null);
   const [sheet, setSheet] = useState(false);
   const [saved, setSaved] = useState(readSaved);
   const lite = liteMotion();
@@ -85,11 +87,11 @@ export function ProductScreen({
   if (!product) {
     return (
       <div className="product-page">
-        <ProductBar category="Каталог" cartCount={cartTotal(cart)} onBack={leave} onCart={onCart} />
+        <ProductBar category={t("header.catalog")} cartCount={cartTotal(cart)} onBack={leave} onCart={onCart} />
         <div className="empty catalog-empty">
           <div className="mark mark-lg" aria-hidden="true" />
-          <p className="empty-title">Позиция не найдена</p>
-          <p className="empty-text">Этой карточки нет в каталоге.</p>
+          <p className="empty-title">{t("product.missing")}</p>
+          <p className="empty-text">{t("product.missingText")}</p>
         </div>
       </div>
     );
@@ -118,7 +120,7 @@ export function ProductScreen({
   function add() {
     if (!variant || blocked) return;
     const result = onAdd(current.id, qty, variant.id);
-    setNote(result === "added" ? "Добавлено" : result === "limit" ? "Больше нет" : "Нет в наличии");
+    setNote(result === "added" ? "added" : result === "limit" ? "limit" : "out");
     if (result === "added") setQty(1);
   }
 
@@ -165,23 +167,23 @@ export function ProductScreen({
                 writeSaved(next);
               }}
             >
-              {saved.includes(current.id) ? "В избранном" : "В избранное"}
+              {saved.includes(current.id) ? t("product.saved") : t("product.save")}
             </button>
           </div>
           <p className="product-price product-price-lg">
-            {current.preview ? <strong>—</strong> : variant ? <strong>{euro(variant.price)}</strong> : <strong>{euro(current.price)}</strong>}
-            {!current.preview && variant?.oldPrice ? <s>{euro(variant.oldPrice)}</s> : null}
+            {current.preview ? <strong>—</strong> : variant ? <strong>{euro(variant.price, money)}</strong> : <strong>{euro(current.price, money)}</strong>}
+            {!current.preview && variant?.oldPrice ? <s>{euro(variant.oldPrice, money)}</s> : null}
           </p>
           <p className={current.preview ? "stock" : `stock stock-${variant?.availability ?? "out"}`}>
-            {current.preview ? "Образец" : availabilityLabel[variant?.availability ?? "out"]}
+            {current.preview ? t("product.sample") : t(`stock.${variant?.availability ?? "out"}`)}
           </p>
-          <button type="button" className="variant-trigger" aria-label={flavorChoice ? "Выбрать вкус" : "Выбрать объём"} onClick={() => setSheet(true)}>
-            <span>{variant?.label ?? "Выбрать"}</span>
-            <strong>{current.preview || !variant ? "—" : euro(variant.price)}</strong>
+          <button type="button" className="variant-trigger" aria-label={flavorChoice ? t("product.chooseFlavor") : t("product.chooseVolume")} onClick={() => setSheet(true)}>
+            <span>{variant?.label ?? t("product.choose")}</span>
+            <strong>{current.preview || !variant ? "—" : euro(variant.price, money)}</strong>
           </button>
-          <h3 className="section-label">Количество</h3>
+          <h3 className="section-label">{t("product.qty")}</h3>
           <div className="qty">
-            <motion.button type="button" onClick={() => setQty((value) => Math.max(1, value - 1))} disabled={blocked || qty <= 1} whileTap={reduce || blocked || qty <= 1 ? undefined : productTap} transition={tapSpring} aria-label="Меньше">
+            <motion.button type="button" onClick={() => setQty((value) => Math.max(1, value - 1))} disabled={blocked || qty <= 1} whileTap={reduce || blocked || qty <= 1 ? undefined : productTap} transition={tapSpring} aria-label={t("product.less")}>
               −
             </motion.button>
             <span>{blocked ? 0 : qty}</span>
@@ -191,7 +193,7 @@ export function ProductScreen({
               disabled={blocked || qty >= remaining}
               whileTap={reduce || blocked || qty >= remaining ? undefined : productTap}
               transition={tapSpring}
-              aria-label="Больше"
+              aria-label={t("product.more")}
             >
               +
             </motion.button>
@@ -207,11 +209,11 @@ export function ProductScreen({
           />
           <p className="product-lead">{current.description}</p>
 
-          <h3 className="section-label">Характеристики</h3>
+          <h3 className="section-label">{t("product.specs")}</h3>
           <div className="facts">
-            <div className="fact"><span>Категория</span><strong>{sectionLabel(current.category)}</strong></div>
-            <div className="fact"><span>Вкус</span><strong>{flavorChoice ? (variant?.label ?? "—") : current.flavor}</strong></div>
-            {flavorChoice ? null : <div className="fact"><span>Объём</span><strong>{variant?.label ?? "—"}</strong></div>}
+            <div className="fact"><span>{t("product.category")}</span><strong>{sectionTitle(sectionLabel(current.category), t)}</strong></div>
+            <div className="fact"><span>{t("product.flavor")}</span><strong>{flavorChoice ? (variant?.label ?? "—") : current.flavor}</strong></div>
+            {flavorChoice ? null : <div className="fact"><span>{t("product.volume")}</span><strong>{variant?.label ?? "—"}</strong></div>}
           </div>
 
         </div>
@@ -221,18 +223,24 @@ export function ProductScreen({
         <motion.button
           type="button"
           className="btn btn-primary product-buy"
-          disabled={blocked && note !== "Добавлено"}
+          disabled={blocked && note !== "added"}
           whileTap={reduce || blocked ? undefined : productTap}
-          animate={note === "Добавлено" && !reduce ? { scale: [1, 1.04, 1] } : { scale: 1 }}
-          transition={note === "Добавлено" ? addPulse : tapSpring}
+          animate={note === "added" && !reduce ? { scale: [1, 1.04, 1] } : { scale: 1 }}
+          transition={note === "added" ? addPulse : tapSpring}
           onClick={add}
         >
-          {note === "Добавлено" ? "Добавлено" : current.preview ? "Без цены" : blocked ? "Нет в наличии" : `В корзину · ${euro(total)}`}
+          {note === "added" ? t("product.added") : current.preview ? t("product.noPrice") : blocked ? t("product.out") : t("product.buy", { sum: euro(total, money) })}
         </motion.button>
-        <p className="product-note" role="status">{note === "Добавлено" ? "Позиция добавлена в корзину" : note}</p>
+        <p className="product-note" role="status">{note === "added" ? t("product.addedNote") : note === "limit" ? t("product.limit") : note === "out" ? t("product.out") : ""}</p>
       </div>
     </div>
   );
+}
+
+function sectionTitle(value: string, t: (key: string) => string) {
+  if (value === "Жидкости") return t("catalog.liquids");
+  if (value === "Устройства") return t("catalog.devices");
+  return value;
 }
 
 function ProductBar({
@@ -247,6 +255,7 @@ function ProductBar({
   onCart: () => void;
 }) {
   const reduce = useReducedMotion();
+  const { t } = useI18n();
   return (
     <div className="product-bar">
       <motion.button
@@ -255,14 +264,14 @@ function ProductBar({
         onClick={onBack}
         whileTap={reduce ? undefined : { scale: 0.94, x: -2 }}
         transition={tapSpring}
-        aria-label="Назад в каталог"
+        aria-label={t("product.back")}
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
           <path d="M15 5.5 8.5 12 15 18.5" />
         </svg>
       </motion.button>
       <p className="product-bar-title">{category}</p>
-      <CountBump className="cart-pill" value={cartCount} label={cartCount > 0 ? `Корзина, ${cartCount}` : "Корзина"} onClick={onCart} />
+      <CountBump className="cart-pill" value={cartCount} label={cartCount > 0 ? t("home.cartCount", { count: cartCount }) : t("product.cart")} onClick={onCart} />
     </div>
   );
 }

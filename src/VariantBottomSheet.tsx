@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { availabilityLabel, euro, type Variant } from "./products";
+import { euro, type Variant } from "./products";
+import { moneyLocale, useI18n } from "./i18n";
 import { variantSheetMove } from "./productMotion";
 
 export function VariantBottomSheet({
@@ -22,6 +23,9 @@ export function VariantBottomSheet({
   onClose: () => void;
 }) {
   const reduce = useReducedMotion();
+  const { t, lang } = useI18n();
+  const money = moneyLocale(lang);
+  const flavor = kind === "вкус";
   const [query, setQuery] = useState("");
   const panelRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -70,7 +74,7 @@ export function VariantBottomSheet({
             ref={panelRef}
             role="dialog"
             aria-modal="true"
-            aria-label={kind === "вкус" ? "Вкус" : "Объём"}
+            aria-label={flavor ? t("sheet.flavor") : t("sheet.volume")}
             className="sheet"
             onClick={(event) => event.stopPropagation()}
             initial={reduce ? false : { y: "110%" }}
@@ -80,18 +84,18 @@ export function VariantBottomSheet({
           >
             <span className="sheet-grip" aria-hidden="true" />
             <label className="sheet-search">
-              <span>Поиск</span>
+              <span>{t("catalog.search")}</span>
               <input
                 ref={searchRef}
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder={kind === "вкус" ? "Вкус" : "Объём"}
-                aria-label={kind === "вкус" ? "Поиск вкуса" : "Поиск объёма"}
+                placeholder={flavor ? t("sheet.flavor") : t("sheet.volume")}
+                aria-label={flavor ? t("sheet.searchFlavor") : t("sheet.searchVolume")}
                 enterKeyHint="search"
               />
             </label>
-            <div className="sheet-list" role="listbox" aria-label={kind === "вкус" ? "Вкус" : "Объём"}>
-              {visible.length === 0 ? <p className="sheet-empty">{kind === "вкус" ? "Такого вкуса нет." : "Такого объёма нет."}</p> : null}
+            <div className="sheet-list" role="listbox" aria-label={flavor ? t("sheet.flavor") : t("sheet.volume")}>
+              {visible.length === 0 ? <p className="sheet-empty">{flavor ? t("sheet.noFlavor") : t("sheet.noVolume")}</p> : null}
               {visible.map((item) => {
                 const closed = item.availability === "out" || item.stock <= 0;
                 const selected = item.id === selectedId;
@@ -110,8 +114,8 @@ export function VariantBottomSheet({
                     }}
                   >
                     <span>{item.label}</span>
-                    <strong>{hideCommerce ? "—" : euro(item.price)}</strong>
-                    <em>{hideCommerce ? "—" : closed ? "Нет" : `${availabilityLabel[item.availability]} · ${item.stock}`}</em>
+                    <strong>{hideCommerce ? "—" : euro(item.price, money)}</strong>
+                    <em>{hideCommerce ? "—" : closed ? t("stock.out") : `${t(`stock.${item.availability}`)} · ${item.stock}`}</em>
                   </button>
                 );
               })}

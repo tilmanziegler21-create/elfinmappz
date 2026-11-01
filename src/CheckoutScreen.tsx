@@ -7,6 +7,7 @@ import { courierChatLink } from "./telegram";
 import { cartTitle, orderNumber } from "./lineLabel";
 import { cartEntries, cartMoney, euro } from "./products";
 import { tapSpring } from "./motion";
+import { moneyLocale, useI18n } from "./i18n";
 
 export function CheckoutScreen({
   cart,
@@ -42,6 +43,8 @@ export function CheckoutScreen({
   authFailed?: boolean;
 }) {
   const reduce = useReducedMotion();
+  const { t, lang } = useI18n();
+  const money = moneyLocale(lang);
   const lines = cartEntries(cart);
   const total = cartMoney(cart);
   const idempotencyKey = useRef(`checkout-${crypto.randomUUID()}`);
@@ -84,23 +87,23 @@ export function CheckoutScreen({
     if (telegramGate) {
       reportCheckout(!token ? "NO_BEARER" : "AUTH_PHASE");
       setError(authFailed || authPhase === "expired" || authPhase === "error"
-        ? "Не удалось подтвердить вход через Telegram. Откройте приложение заново."
-        : "Откройте магазин через Telegram, чтобы подтвердить заказ.");
+        ? t("checkout.auth")
+        : t("checkout.gate"));
       return;
     }
     if (!payments.includes(payment)) {
       reportCheckout("PAYMENT_UNAVAILABLE");
-      setError("Этот способ оплаты недоступен.");
+      setError(t("checkout.badPay"));
       return;
     }
     if (!courier) {
       reportCheckout("NO_COURIER");
-      setError("Выберите курьера.");
+      setError(t("checkout.needCourier"));
       return;
     }
     if (!time) {
       reportCheckout("NO_SLOT");
-      setError("Выберите время.");
+      setError(t("checkout.needTime"));
       return;
     }
     setError(null);
@@ -176,7 +179,7 @@ export function CheckoutScreen({
       setPhase("form");
       const message = reason instanceof Error ? reason.message : "";
       if (message === "Сервер не ответил.") reportCheckout("SERVER_UNREACHABLE");
-      setError(checkoutNotice(message));
+      setError(checkoutNotice(message, t));
     }
   }
 
@@ -190,17 +193,17 @@ export function CheckoutScreen({
             <CrystalIllustration variant="orders" />
           </span>
         </div>
-        <h2 className="empty-title">Заказ успешно оформлен!</h2>
-        <p className="empty-text">Заказ: {orderNumber({ displayNumber, orderId })}</p>
-        <p className="empty-text">Статус: Ожидает подтверждения</p>
-        <p className="empty-text">Курьер: {courier?.name || "Назначенный курьер"}</p>
-        <p className="empty-text">Время: {time}</p>
-        <p className="empty-text">Сумма: {euro(doneTotal)}</p>
-        {noticePending ? <p className="checkout-note">Сообщение курьеру ещё не доставлено. Заказ сохранён.</p> : null}
+        <h2 className="empty-title">{t("checkout.done")}</h2>
+        <p className="empty-text">{t("checkout.order", { id: orderNumber({ displayNumber, orderId }) })}</p>
+        <p className="empty-text">{t("checkout.status")}</p>
+        <p className="empty-text">{t("checkout.courierLine", { name: courier?.name || t("checkout.assigned") })}</p>
+        <p className="empty-text">{t("checkout.when", { time })}</p>
+        <p className="empty-text">{t("checkout.sum", { sum: euro(doneTotal, money) })}</p>
+        {noticePending ? <p className="checkout-note">{t("checkout.notice")}</p> : null}
         <div className="empty-actions">
-          {writeHref ? <a className="btn btn-primary empty-cta" href={writeHref} target="_blank" rel="noreferrer">💬 Написать курьеру</a> : null}
-          <button type="button" className="btn btn-ghost empty-cta" onClick={onOrders}>📦 Мои заказы</button>
-          <button type="button" className="btn btn-ghost empty-cta" onClick={onHome || onCatalog}>🏠 На главную</button>
+          {writeHref ? <a className="btn btn-primary empty-cta" href={writeHref} target="_blank" rel="noreferrer">{t("checkout.write")}</a> : null}
+          <button type="button" className="btn btn-ghost empty-cta" onClick={onOrders}>{t("checkout.myOrders")}</button>
+          <button type="button" className="btn btn-ghost empty-cta" onClick={onHome || onCatalog}>{t("checkout.home")}</button>
         </div>
       </div>
     );
@@ -210,9 +213,9 @@ export function CheckoutScreen({
     return (
       <EmptyState
         variant="cart"
-        title="Корзина пуста"
-        description="Сначала выберите товары."
-        primaryAction={{ label: "В каталог", onClick: onCatalog }}
+        title={t("cart.empty")}
+        description={t("checkout.emptyText")}
+        primaryAction={{ label: t("cart.toCatalog"), onClick: onCatalog }}
       />
     );
   }
@@ -226,8 +229,8 @@ export function CheckoutScreen({
             <CrystalIllustration variant="orders" />
           </span>
         </div>
-        <h2 className="empty-title">Оформляем</h2>
-        <p className="empty-text">Резерв, подтверждение и запись оплаты.</p>
+        <h2 className="empty-title">{t("checkout.loading")}</h2>
+        <p className="empty-text">{t("checkout.loadingText")}</p>
       </div>
     );
   }
@@ -237,13 +240,13 @@ export function CheckoutScreen({
       {onClose ? (
         <div className="sheet-head">
           <span className="sheet-grip" aria-hidden="true" />
-          <button type="button" className="sheet-close" onClick={onClose}>Закрыть</button>
+          <button type="button" className="sheet-close" onClick={onClose}>{t("checkout.close")}</button>
         </div>
       ) : null}
       <div className="checkout-scroll">
-        <div className="order-seg" role="group" aria-label="Способ получения">
-          <button type="button" className={fulfillment === "pickup" ? "is-on" : ""} onClick={() => { setFulfillment("pickup"); setError(null); }}>Самовывоз</button>
-          <button type="button" className={fulfillment === "delivery" ? "is-on" : ""} onClick={() => { setFulfillment("delivery"); setError(null); }}>Доставка</button>
+        <div className="order-seg" role="group" aria-label={t("checkout.method")}>
+          <button type="button" className={fulfillment === "pickup" ? "is-on" : ""} onClick={() => { setFulfillment("pickup"); setError(null); }}>{t("checkout.pickup")}</button>
+          <button type="button" className={fulfillment === "delivery" ? "is-on" : ""} onClick={() => { setFulfillment("delivery"); setError(null); }}>{t("checkout.delivery")}</button>
         </div>
         <div className="checkout-card">
           {lines.map((line) => (
@@ -253,49 +256,49 @@ export function CheckoutScreen({
             </div>
           ))}
         </div>
-        {authPhase === "initializing" ? <p className="cart-caption">Подтверждаем Telegram.</p> : null}
+        {authPhase === "initializing" ? <p className="cart-caption">{t("checkout.checking")}</p> : null}
         {user.tgId && !signedOut ? (
           <div className="facts">
             <div className="fact"><span>Telegram ID</span><strong>{user.tgId}</strong></div>
           </div>
         ) : authPhase === "initializing" ? null : (
-          <p className="checkout-note">{authPhase === "expired" || authPhase === "error" || authFailed ? "Не удалось подтвердить вход через Telegram. Откройте приложение заново." : "Откройте магазин через Telegram, чтобы подтвердить заказ."}{botUrl ? <> <a href={botUrl}>Открыть через Telegram</a></> : null}</p>
+          <p className="checkout-note">{authPhase === "expired" || authPhase === "error" || authFailed ? t("checkout.auth") : t("checkout.gate")}{botUrl ? <> <a href={botUrl}>{t("checkout.openTg")}</a></> : null}</p>
         )}
         <label className="order-field">
-          <span>Курьер</span>
+          <span>{t("checkout.courier")}</span>
           <select value={courierId} onChange={(event) => chooseCourier(event.target.value)}>
-            <option value="">Выберите курьера</option>
+            <option value="">{t("checkout.pickCourier")}</option>
             {couriers.map((item) => (
               <option key={item.courier_id} value={item.courier_id}>{item.name} · {item.time_from}–{item.time_to}</option>
             ))}
           </select>
         </label>
         <label className="order-field">
-          <span>Время</span>
+          <span>{t("checkout.time")}</span>
           <select value={time} onChange={(event) => setTime(event.target.value)} disabled={!courier}>
-            <option value="">{courier ? "Время" : "Сначала курьер"}</option>
+            <option value="">{courier ? t("checkout.time") : t("checkout.timeFirst")}</option>
             {slots.map((slot) => <option key={slot} value={slot}>{slot}</option>)}
           </select>
         </label>
       </div>
       <div className="order-dock">
         <p className="checkout-error" role={error ? "alert" : undefined}>{error ?? ""}</p>
-        <div className="pay-row" role="group" aria-label="Оплата">
+        <div className="pay-row" role="group" aria-label={t("checkout.pay")}>
           <button type="button" className={payment === "cash" ? "pay-tile is-on" : "pay-tile"} aria-pressed={payment === "cash"} disabled={!payments.includes("cash")} onClick={() => setPayment("cash")}>
             {payment === "cash" ? <svg className="pay-check" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.2 6.2 11.5 13 4.5" fill="none" stroke="currentColor" strokeWidth="1.8" /></svg> : null}
-            Наличные
+            {t("checkout.cash")}
           </button>
-          <button type="button" className="pay-tile" disabled title="Карта при получении пока недоступна">Карта при получении</button>
-          <button type="button" className="pay-tile" disabled title="Другой способ пока недоступен">Другое</button>
+          <button type="button" className="pay-tile" disabled title={t("checkout.cardTitle")}>{t("checkout.card")}</button>
+          <button type="button" className="pay-tile" disabled title={t("checkout.otherTitle")}>{t("checkout.other")}</button>
         </div>
-        <p className="cart-caption">Сейчас доступны только наличные при встрече. Карта и другие способы не подключены.</p>
+        <p className="cart-caption">{t("checkout.cashOnly")}</p>
         <div className="order-sum">
-          <span>Товары</span>
-          <strong>{euro(total)}</strong>
-          <span>Получение</span>
-          <strong>{fulfillment === "pickup" ? "Самовывоз" : "Доставка"}</strong>
-          <span className="is-total">Итого</span>
-          <strong className="is-total">{euro(total)}</strong>
+          <span>{t("checkout.goods")}</span>
+          <strong>{euro(total, money)}</strong>
+          <span>{t("checkout.fulfillment")}</span>
+          <strong>{fulfillment === "pickup" ? t("checkout.pickup") : t("checkout.delivery")}</strong>
+          <span className="is-total">{t("cart.total")}</span>
+          <strong className="is-total">{euro(total, money)}</strong>
         </div>
         <motion.button
           type="button"
@@ -305,16 +308,18 @@ export function CheckoutScreen({
           whileTap={reduce || busy || telegramGate ? undefined : { scale: 0.97 }}
           transition={tapSpring}
         >
-          Подтвердить заказ
+          {t("checkout.confirm")}
         </motion.button>
       </div>
     </div>
   );
 }
 
-function checkoutNotice(message: string) {
-  if (message === "ORDERS_NEED_DATABASE") return "Оформление тестовых заказов пока недоступно.";
-  if (message === "Выберите курьера" || message === "Выберите время" || message === "Укажите адрес" || message === "Укажите точку встречи") return message.endsWith(".") ? message : `${message}.`;
-  if (message === "Этот способ оплаты недоступен.") return message;
-  return "Заказ не удалось сохранить. Попробуйте ещё раз.";
+function checkoutNotice(message: string, t: (key: string) => string) {
+  if (message === "ORDERS_NEED_DATABASE") return t("checkout.noDb");
+  if (message === "Выберите курьера") return t("checkout.needCourier");
+  if (message === "Выберите время") return t("checkout.needTime");
+  if (message === "Укажите адрес" || message === "Укажите точку встречи") return message.endsWith(".") ? message : `${message}.`;
+  if (message === "Этот способ оплаты недоступен.") return t("checkout.badPay");
+  return t("checkout.saveFail");
 }

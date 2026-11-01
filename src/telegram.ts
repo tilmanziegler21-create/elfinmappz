@@ -31,6 +31,11 @@ export function telegramWebApp(): TelegramWebApp | null {
   return web ?? null;
 }
 
+export function telegramLanguageCode() {
+  const code = (window as unknown as { Telegram?: { WebApp?: { initDataUnsafe?: { user?: { language_code?: string } } } } }).Telegram?.WebApp?.initDataUnsafe?.user?.language_code;
+  return typeof code === "string" && code.length > 0 && code.length <= 16 ? code : null;
+}
+
 export function telegramBotLink(name: string | null | undefined) {
   const value = String(name || "").trim().replace(/^@/, "");
   if (!/^[A-Za-z0-9_]{5,32}$/.test(value) || !/[A-Za-z_]/.test(value)) return null;

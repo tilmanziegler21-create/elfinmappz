@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { api, customerStatus, type ApiCourier, type ApiOrder } from "./api";
+import { api, type ApiCourier, type ApiOrder } from "./api";
+import { moneyLocale, useI18n } from "./i18n";
 import { courierChatLink } from "./telegram";
 import { EmptyState } from "./EmptyState";
 import { positionWord } from "./orders";
@@ -19,6 +20,8 @@ export function OrdersScreen({
   couriers?: ApiCourier[];
   botUrl?: string | null;
 }) {
+  const { t, lang } = useI18n();
+  const money = moneyLocale(lang);
   const [orders, setOrders] = useState<ApiOrder[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
@@ -44,15 +47,15 @@ export function OrdersScreen({
     return (
       <div className="empty-state">
         <p className="checkout-error" role="alert">{error}</p>
-        <button type="button" className="btn btn-primary empty-cta" onClick={() => setReload((value) => value + 1)}>Повторить</button>
+        <button type="button" className="btn btn-primary empty-cta" onClick={() => setReload((value) => value + 1)}>{t("orders.retry")}</button>
       </div>
     );
   }
   if (!orders) {
     return (
       <div className="empty-state">
-        <h2 className="empty-title">Заказы</h2>
-        <p className="empty-text">Загружаем историю.</p>
+        <h2 className="empty-title">{t("orders.title")}</h2>
+        <p className="empty-text">{t("orders.loading")}</p>
       </div>
     );
   }
@@ -60,9 +63,9 @@ export function OrdersScreen({
     return (
       <EmptyState
         variant="orders"
-        title="Заказов пока нет"
-        description="История заказов появится здесь после первого оформления."
-        primaryAction={{ label: "Открыть каталог", onClick: onCatalog }}
+        title={t("orders.empty")}
+        description={t("orders.emptyText")}
+        primaryAction={{ label: t("orders.openCatalog"), onClick: onCatalog }}
       />
     );
   }
@@ -71,24 +74,24 @@ export function OrdersScreen({
       {orders.map((order) => {
         const open = openId === order.orderId;
         const courier = couriers.find((item) => item.courier_id === order.courierId);
-        const method = order.deliveryMethod === "pickup" ? "Самовывоз" : order.deliveryMethod === "courier" ? "Доставка" : "";
+        const method = order.deliveryMethod === "pickup" ? t("checkout.pickup") : order.deliveryMethod === "courier" ? t("checkout.delivery") : "";
         return (
           <article key={order.orderId} className="order-card">
             <button type="button" className="order-head" aria-expanded={open} onClick={() => setOpenId(open ? null : order.orderId)}>
-              <h2>Заказ {orderNumber(order)}</h2>
-              <span className={`order-status is-${order.status}`}>{customerStatus[order.status] || order.status}</span>
+              <h2>{t("orders.order", { id: orderNumber(order) })}</h2>
+              <span className={`order-status is-${order.status}`}>{t(`status.${order.status}`)}</span>
             </button>
             <p>{order.handle || customerHandle(order.username)}</p>
-            <p>{order.lines.length} {positionWord(order.lines.length)}, {order.units} шт. · {euro(order.finalAmount ?? order.totalAmount)}</p>
-            <p>{order.time || "Время не выбрано"}</p>
-            {order.place ? <p>{method || "Получение"} · {order.place}</p> : null}
+            <p>{order.lines.length} {positionWord(order.lines.length, lang)}, {order.units} {t("orders.pieces")} · {euro(order.finalAmount ?? order.totalAmount, money)}</p>
+            <p>{order.time || t("orders.noTime")}</p>
+            {order.place ? <p>{method || t("checkout.fulfillment")} · {order.place}</p> : null}
             <button
               type="button"
               className="btn btn-ghost choice-btn"
               aria-expanded={open}
               onClick={() => setOpenId(open ? null : order.orderId)}
             >
-              {open ? "Скрыть" : "Подробнее"}
+              {open ? t("orders.hide") : t("orders.more")}
             </button>
             {open ? (
               <div>
@@ -97,12 +100,12 @@ export function OrdersScreen({
                     <li key={`${line.brand || ""}-${line.name}-${line.variant}`}>{line.text || formatLine(line).text}</li>
                   ))}
                 </ul>
-                <p>Итого {euro(order.finalAmount ?? order.totalAmount)}</p>
-                <p>{[order.date, order.time].filter(Boolean).join(" ") || "Время не выбрано"}</p>
+                <p>{t("orders.total", { sum: euro(order.finalAmount ?? order.totalAmount, money) })}</p>
+                <p>{[order.date, order.time].filter(Boolean).join(" ") || t("orders.noTime")}</p>
                 {method ? <p>{method}</p> : null}
-                {order.courierId ? <p>Курьер {courier?.name || order.courierId}</p> : null}
+                {order.courierId ? <p>{t("orders.courier", { name: courier?.name || order.courierId })}</p> : null}
                 {["pending", "assigned", "picked_up", "buffer"].includes(order.status) && courierChatLink(order.writeCourier, botUrl) ? (
-                  <a className="btn btn-ghost choice-btn" href={courierChatLink(order.writeCourier, botUrl)} target="_blank" rel="noreferrer">💬 Написать курьеру</a>
+                  <a className="btn btn-ghost choice-btn" href={courierChatLink(order.writeCourier, botUrl)} target="_blank" rel="noreferrer">{t("checkout.write")}</a>
                 ) : null}
               </div>
             ) : null}

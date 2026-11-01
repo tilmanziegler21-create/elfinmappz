@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useReducedMotion } from "framer-motion";
-import { bootLabel, type BootPhase } from "../boot";
+import { type BootPhase } from "../boot";
+import { useI18n } from "../i18n";
 
 const WORD = "ELFIN MARKET";
 
@@ -18,6 +19,7 @@ export function ElfinSplash({
   onHidden: () => void;
 }) {
   const reduce = useReducedMotion();
+  const { t } = useI18n();
   const [introDone, setIntroDone] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const shown = phase === "ready" ? 100 : Math.min(progress, 99);
@@ -46,7 +48,7 @@ export function ElfinSplash({
       role="status"
       aria-live="polite"
       aria-busy={phase !== "ready" && phase !== "error"}
-      aria-label="Загрузка ELFIN Market"
+      aria-label={t("splash.label")}
     >
       <div className="splash-stage">
         <span className="splash-glow" aria-hidden="true" />
@@ -68,11 +70,11 @@ export function ElfinSplash({
         ))}
       </p>
       <h1 className="splash-title">ELFIN</h1>
-      <p className="splash-line">Пробуждаем ледяную магию</p>
-      <p className="splash-status">{bootLabel[phase]}</p>
+      <p className="splash-line">{t("splash.line")}</p>
+      <p className="splash-status">{t(`boot.${phase}`)}</p>
       {phase === "error" ? (
         <button type="button" className="btn btn-primary splash-retry" onClick={onRetry}>
-          Повторить
+          {t("splash.retry")}
         </button>
       ) : (
         <div className="splash-meter">
