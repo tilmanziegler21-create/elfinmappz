@@ -19,6 +19,7 @@ import { CART_KEY, clampLineQty, defaultVariant, euro, findProduct, lineKey, pro
 import { sectionItem, sectionList, tapSpring } from "./motion";
 import { prewarmImages } from "./ImagePreloader";
 import { languageName, languages, useI18n, type Lang } from "./i18n";
+import { useTheme } from "./theme";
 
 type Screen = "home" | "catalog" | "cart" | "orders" | "profile" | "checkout" | "courier" | "admin";
 
@@ -518,7 +519,7 @@ export function App() {
           <>
             {heldRef.current.includes("home") ? (
               <section className={view === "home" ? "panel panel-home is-current" : "panel panel-home"} hidden={view !== "home"}>
-                <Home onOpen={showScreen} onProduct={openProduct} onCart={() => showScreen("cart")} cartCount={cartCount} shelf={catalogMode === "live" ? liveProducts.slice(0, 4) : []} live={catalogMode === "live"} />
+                <Home onOpen={showScreen} onProduct={openProduct} shelf={catalogMode === "live" ? liveProducts.slice(0, 4) : []} live={catalogMode === "live"} />
               </section>
             ) : null}
             {heldRef.current.includes("catalog") ? (
@@ -698,21 +699,35 @@ function Press({
 function Home({
   onOpen,
   onProduct,
-  onCart,
-  cartCount,
   shelf,
   live,
 }: {
   onOpen: (screen: Screen) => void;
   onProduct: (id: string) => void;
-  onCart: () => void;
-  cartCount: number;
   shelf: Product[];
   live: boolean;
 }) {
   const reduce = useReducedMotion();
-  const { t } = useI18n();
+  const { t, lang, setLang } = useI18n();
+  const { theme, setTheme } = useTheme();
   const [terms, setTerms] = useState(false);
+  const [langOpen, setLangOpen] = useState(false);
+  const tools = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!langOpen) return;
+    const close = (event: PointerEvent) => {
+      if (!tools.current?.contains(event.target as Node)) setLangOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setLangOpen(false);
+    };
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", close);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [langOpen]);
   const cards = live ? shelf : products.filter((item) => shopSection(item.category)).slice(0, 4);
   const stage = typeof document !== "undefined" ? document.querySelector(".stage") : null;
   return (
@@ -728,15 +743,44 @@ function Home({
           <p className="catalog-word">ELFIN Market</p>
           <p className="home-city">Hamburg</p>
         </div>
-        <button
-          type="button"
-          className="catalog-icon home-cart"
-          aria-label={cartCount > 0 ? t("home.cartCount", { count: cartCount }) : t("home.cart")}
-          onClick={onCart}
-        >
-          <BagMark />
-          {cartCount > 0 ? <span className="home-badge">{cartCount}</span> : null}
-        </button>
+        <div className="home-tools" ref={tools}>
+          <button
+            type="button"
+            className="theme-toggle"
+            aria-label={theme === "dark" ? t("theme.toLight") : t("theme.toDark")}
+            aria-pressed={theme === "dark"}
+            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+          >
+            {theme === "dark" ? <SunMark /> : <MoonMark />}
+          </button>
+          <button
+            type="button"
+            className="lang-toggle"
+            aria-label={`${t("profile.language")}, ${lang.toUpperCase()}`}
+            aria-expanded={langOpen}
+            onClick={() => setLangOpen((open) => !open)}
+          >
+            <GlobeMark />
+            {lang.toUpperCase()}
+          </button>
+          {langOpen ? (
+            <div className="lang-pop" role="listbox" aria-label={t("profile.languageTitle")}>
+              {languages.map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  role="option"
+                  className={item === lang ? "is-on" : ""}
+                  aria-selected={item === lang}
+                  onClick={() => { setLang(item); setLangOpen(false); }}
+                >
+                  <span>{item === "ru" ? "🇷🇺" : item === "uk" ? "🇺🇦" : item === "en" ? "🇬🇧" : "🇩🇪"} {languageName[item]}</span>
+                  <strong>{item.toUpperCase()}</strong>
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
       </motion.div>
       <motion.section className="home-banner" variants={sectionItem}>
         <p className="home-kicker">ELFIN Market · Hamburg</p>
@@ -779,11 +823,28 @@ function Home({
   );
 }
 
-function BagMark() {
+function SunMark() {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6">
-      <path d="M6 8h12l-1 12H7L6 8z" />
-      <path d="M9 8V7a3 3 0 0 1 6 0v1" />
+    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.7">
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4" />
+    </svg>
+  );
+}
+
+function MoonMark() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.7">
+      <path d="M16 3.2A8 8 0 1 0 20.8 14 6.2 6.2 0 0 1 16 3.2z" />
+    </svg>
+  );
+}
+
+function GlobeMark() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.7">
+      <circle cx="12" cy="12" r="8" />
+      <path d="M4 12h16M12 4c2.2 2.4 2.2 13.6 0 16M12 4c-2.2 2.4-2.2 13.6 0 16" />
     </svg>
   );
 }

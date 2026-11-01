@@ -3,8 +3,12 @@ type Insets = { top: number; bottom: number; left: number; right: number };
 export type TelegramWebApp = {
   initData?: string;
   version?: string;
+  colorScheme?: "light" | "dark";
   ready?: () => void;
   expand?: () => void;
+  setHeaderColor?: (color: string) => void;
+  setBackgroundColor?: (color: string) => void;
+  setBottomBarColor?: (color: string) => void;
   viewportHeight?: number;
   viewportStableHeight?: number;
   safeAreaInset?: Insets;
