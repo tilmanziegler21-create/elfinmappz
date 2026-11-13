@@ -17,6 +17,7 @@ export type Product = {
   name: string;
   flavor: string;
   brand?: string;
+  productLine?: string;
   category: string;
   price: number;
   oldPrice?: number;

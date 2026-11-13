@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { EmptyState } from "./EmptyState";
+import { lineTitle } from "./catalogLine";
 import { cartTitle } from "./lineLabel";
 import { cartEntries, cartMoney, euro } from "./products";
 import { favoriteExit } from "./productMotion";
@@ -111,7 +112,7 @@ export function CartScreen({
                         : <span className="mark" />}
                     </span>
                     <span className="cart-copy">
-                      <span className="cart-brand">{line.product.brand || line.product.name}</span>
+                      <span className="cart-brand">{lineTitle(line.product)}</span>
                       <span className="cart-name" title={cartTitle(line.product, line.variant)}>{cartDetail(line.product, line.variant)}</span>
                       <span className="cart-meta">
                         {euro(line.variant.price, money)}
@@ -201,9 +202,9 @@ export function CartScreen({
   );
 }
 
-function cartDetail(product: { brand?: string; name?: string; flavor?: string }, variant: { label?: string }) {
+function cartDetail(product: { brand?: string; name?: string; flavor?: string; productLine?: string }, variant: { label?: string }) {
   const full = cartTitle(product, variant);
-  const brand = (product.brand || product.name || "").trim();
+  const brand = lineTitle(product);
   if (brand && full.toLowerCase().startsWith(brand.toLowerCase())) {
     const rest = full.slice(brand.length).replace(/^[\s—\-–:·/]+/, "");
     return rest || full;

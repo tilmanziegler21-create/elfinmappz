@@ -1,3 +1,5 @@
+import { catalogIdentity, lineTitle } from "./catalogLine";
+
 function clean(value: unknown) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
 }
@@ -7,7 +9,8 @@ function same(left: string, right: string) {
 }
 
 export function formatLine(item: { brand?: string; name?: string; variant?: string; quantity?: number; qty?: number }) {
-  const brand = clean(item?.brand);
+  const rawBrand = clean(item?.brand);
+  const brand = rawBrand ? catalogIdentity(rawBrand).title : "";
   const rawName = clean(item?.name);
   const variant = clean(item?.variant);
   const qty = Number(item?.quantity ?? item?.qty ?? 1);
@@ -26,11 +29,11 @@ export function formatLine(item: { brand?: string; name?: string; variant?: stri
   return { title, qty: count, text: `${title} × ${count}` };
 }
 
-export function cartTitle(product: { brand?: string; name?: string; flavor?: string }, variant: { label?: string }) {
+export function cartTitle(product: { brand?: string; name?: string; flavor?: string; productLine?: string }, variant: { label?: string }) {
   const label = clean(variant?.label);
   const volume = /^\d+\s*мл$/i.test(label);
   const flavor = volume ? clean(product?.flavor) || label : label;
-  return formatLine({ brand: product?.brand || product?.name, name: flavor, variant: volume ? label : "" }).title;
+  return formatLine({ brand: lineTitle(product), name: flavor, variant: volume ? label : "" }).title;
 }
 
 export function customerHandle(username?: string) {

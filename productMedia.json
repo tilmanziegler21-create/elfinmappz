@@ -56,7 +56,7 @@
     "category": "pods"
   },
   "pd-0013": {
-    "sku": "PD-0013",
+    "sku": "EL-001",
     "image": "/assets/products/pods/xros-08-mesh-4pcs.png",
     "imageType": "transparent",
     "scene": "pod-float",

@@ -3,6 +3,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { EmptyState } from "./EmptyState";
 import { preloadImages } from "./ImagePreloader";
 import { productTap } from "./productMotion";
+import { lineTitle } from "./catalogLine";
 import { brandFilters, brandGroup, shopSection } from "./categoryRules";
 import { euro, products, unitsFor, type Product } from "./products";
 import { cardItem, cardList, tapSpring } from "./motion";
@@ -95,6 +96,7 @@ export function Catalog({
         || item.name.toLowerCase().includes(needle)
         || item.flavor.toLowerCase().includes(needle)
         || (item.brand || "").toLowerCase().includes(needle)
+        || (item.productLine || "").toLowerCase().includes(needle)
         || item.variants.some((variant) => variant.label.toLowerCase().includes(needle));
       return inSection && inBrand && inSaved && stockOk && inQuery;
     });
@@ -299,7 +301,7 @@ function ProductGrid({
                 <HeartIcon filled={liked} />
               </motion.button>
             </div>
-            <h3 className="product-name">{item.brand || item.name}</h3>
+            <h3 className="product-name">{lineTitle(item)}</h3>
             <p className="product-flavor">{item.flavor}</p>
             <p className="product-price">
               <strong>{demo ? "—" : euro(item.price)}</strong>

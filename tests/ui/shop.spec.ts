@@ -112,7 +112,7 @@ test("фото линейки остаётся при смене вкуса", as
       products: [
         { id: "1", sku: "LQ-1", name: "Blackberry Lemon", category: "liquids", brand: "ELFLIQ", price: 18, stock: 6, active: true },
         { id: "2", sku: "LQ-2", name: "Blue Razz Ice", category: "liquids", brand: "ELFLIQ", price: 19, stock: 3, active: true },
-        { id: "3", sku: "CH-1", name: "Turbo Mint", category: "liquids1", brand: "CHASER", price: 20, stock: 4, active: true },
+        { id: "3", sku: "CH-1", name: "Turbo Mint", category: "liquids1", brand: "Chaser Lux", price: 20, stock: 4, active: true },
         { id: "4", sku: "HQ-1", name: "Grapey", category: "liquids", brand: "HQD", price: 17, stock: 2, active: true },
         { id: "5", sku: "VZ-1", name: "Strawberry Ice", category: "liquids", brand: "VOZOL", price: 21, stock: 5, active: true },
       ],
@@ -143,6 +143,217 @@ test("фото линейки остаётся при смене вкуса", as
   await expect(page.locator(".product-kicker")).toHaveText("Blue Razz Ice");
   await expect(page.getByText("19,00").first()).toBeVisible();
   await expect(page.locator(".hero-scene img")).toHaveCount(1);
+});
+
+test("линейки CHASER не смешиваются", async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.route("**/api/config", async (route) => {
+    const response = await route.fetch();
+    const json = await response.json();
+    json.catalog = "sheets";
+    await route.fulfill({ response, json });
+  });
+  await page.route("**/api/catalog**", (route) => route.fulfill({
+    json: {
+      source: "sheets",
+      products: [
+        { id: "1", sku: "LQ-0013", name: "Blue Razz Ice", category: "liquids", brand: "ELFLIQ", price: 18, stock: 5, active: true },
+        { id: "2", sku: "LQ-0027", name: "Watermelon", category: "liquids", brand: "ELFLIQ", price: 18, stock: 2, active: true },
+        { id: "3", sku: "LQ-0030", name: "Strawberry Ice", category: "liquids", brand: "HQD", price: 18, stock: 9, active: true },
+        { id: "4", sku: "LQ-0031", name: "Lemon Lime", category: "liquids", brand: "VOZOL", price: 18, stock: 1, active: true },
+        { id: "5", sku: "LQ-0032", name: "Perfume Lemon", category: "liquids", brand: "VOZOL", price: 18, stock: 3, active: true },
+        { id: "6", sku: "LQ-0033", name: "Tropic Punch", category: "liquids1", brand: "Chaser Lux", price: 20, stock: 1, active: true },
+        { id: "7", sku: "LQ-0034", name: "Tea Peach", category: "liquids1", brand: "Chaser Lux", price: 20, stock: 1, active: true },
+        { id: "8", sku: "LQ-0035", name: "Vitamin", category: "liquids1", brand: "Chaser Lux", price: 20, stock: 1, active: true },
+        { id: "9", sku: "LQ-0036", name: "Kiwi Passion Fruit Guava", category: "liquids1", brand: "Chaser Lux", price: 20, stock: 1, active: true },
+        { id: "10", sku: "LQ-0037", name: "Sangria", category: "liquids1", brand: "Chaser Lux", price: 20, stock: 2, active: true },
+        { id: "11", sku: "LQ-0038", name: "Peach Yougurt", category: "liquids1", brand: "Chaser Lux", price: 20, stock: 1, active: true },
+        { id: "12", sku: "LQ-0039", name: "Energetic", category: "liquids1", brand: "Chaser Lux", price: 20, stock: 2, active: true },
+        { id: "13", sku: "LQ-0040", name: "Sour Apple", category: "liquids1", brand: "Chaser Lux", price: 20, stock: 1, active: true },
+        { id: "14", sku: "LQ-0041", name: "Лимон", category: "liquids1", brand: "CHASER F/P", price: 20, stock: 1, active: true },
+        { id: "15", sku: "LQ-0042", name: "Tripple Raspberry", category: "liquids1", brand: "Chaser ULTRA", price: 20, stock: 1, active: true },
+        { id: "16", sku: "LQ-0043", name: "Energy Raspberry", category: "liquids1", brand: "Chaser ULTRA", price: 20, stock: 2, active: true },
+      ],
+    },
+  }));
+  await openShop(page);
+  const catalog = page.locator("section.is-current");
+  const lineCard = (title: string) => catalog.locator("article").filter({ has: page.locator("h3", { hasText: new RegExp(`^${title}$`) }) });
+  await page.getByRole("button", { name: "Каталог" }).click();
+  await expect(lineCard("CHASER LUX")).toHaveCount(1);
+  await expect(lineCard("CHASER F/P")).toHaveCount(1);
+  await expect(lineCard("CHASER ULTRA")).toHaveCount(1);
+  await expect(lineCard("ELFLIQ")).toHaveCount(1);
+  await expect(lineCard("VOZOL")).toHaveCount(1);
+  await expect(lineCard("CHASER LUX").locator("img")).toHaveAttribute("src", "/assets/products/liquids/chaser-lux-turbo-mint.png");
+  await expect(lineCard("CHASER F/P").locator("img")).toHaveCount(0);
+  await expect(lineCard("CHASER ULTRA").locator("img")).toHaveCount(0);
+  await expect(lineCard("CHASER ULTRA").getByText("Нет фото")).toBeVisible();
+  await lineCard("CHASER LUX").evaluate((node) => node.scrollIntoView({ block: "start" }));
+  await page.screenshot({ path: "artifacts/chaser-lines/dark-catalog.png" });
+
+  async function openLine(title: string) {
+    await page.getByRole("button", { name: "Каталог" }).click();
+    await expect(page.locator(".product-page")).toHaveCount(0);
+    await lineCard(title).locator("h3").click();
+    await expect(page.locator(".product-page")).toBeVisible();
+  }
+
+  async function shot(path: string) {
+    await expect(page.getByRole("option")).toHaveCount(0);
+    await page.locator(".product-page").evaluate((node) => {
+      node.scrollIntoView({ block: "start", inline: "start" });
+      let parent = node.parentElement;
+      while (parent) {
+        parent.scrollTop = 0;
+        parent = parent.parentElement;
+      }
+      const scroll = node.querySelector(".product-scroll");
+      if (scroll instanceof HTMLElement) scroll.scrollTop = 0;
+      window.scrollTo(0, 0);
+    });
+    await page.screenshot({ path });
+  }
+
+  async function flavors() {
+    await page.locator(".product-page").getByRole("button", { name: "Выбрать вкус" }).click();
+    const options = page.getByRole("option");
+    const text = await options.allTextContents();
+    return text;
+  }
+
+  await openLine("CHASER LUX");
+  let names = await flavors();
+  expect(names).toHaveLength(8);
+  for (const flavor of ["Tropic Punch", "Tea Peach", "Vitamin", "Kiwi Passion Fruit Guava", "Sangria", "Peach Yougurt", "Energetic", "Sour Apple"]) {
+    expect(names.some((item) => item.includes(flavor))).toBeTruthy();
+  }
+  expect(names.some((item) => item.includes("Лимон") || item.includes("Energy Raspberry") || item.includes("Tripple Raspberry"))).toBeFalsy();
+  const punch = page.getByRole("option", { name: /Tropic Punch/ });
+  await expect(punch).toContainText("20,00");
+  await expect(punch).toContainText("· 1");
+  await punch.click();
+  await expect(page.locator(".product-page .hero-scene img")).toHaveAttribute("src", "/assets/products/liquids/chaser-lux-turbo-mint.png");
+  await shot("artifacts/chaser-lines/dark-lux.png");
+  await page.locator(".product-page").getByRole("button", { name: /В корзину/ }).click();
+
+  await openLine("CHASER F/P");
+  names = await flavors();
+  expect(names).toHaveLength(1);
+  expect(names[0]).toContain("Лимон");
+  expect(names[0]).toContain("· 1");
+  await page.getByRole("option", { name: /Лимон/ }).click();
+  await expect(page.locator(".product-page .hero-scene img")).toHaveCount(0);
+  await expect(page.locator(".product-heading")).toHaveText("CHASER F/P");
+  await shot("artifacts/chaser-lines/dark-fp.png");
+  await page.locator(".product-page").getByRole("button", { name: /В корзину/ }).click();
+
+  await openLine("CHASER ULTRA");
+  names = await flavors();
+  expect(names).toHaveLength(2);
+  expect(names.some((item) => item.includes("Tripple Raspberry") && item.includes("· 1"))).toBeTruthy();
+  expect(names.some((item) => item.includes("Energy Raspberry") && item.includes("· 2"))).toBeTruthy();
+  expect(names.some((item) => item.includes("Tropic Punch") || item.includes("Лимон"))).toBeFalsy();
+  await page.getByRole("option", { name: /Energy Raspberry/ }).click();
+  await expect(page.locator(".product-page .hero-scene img")).toHaveCount(0);
+  await expect(page.locator(".product-page .float-stage")).toHaveAttribute("data-image", "crystal");
+  await expect(page.locator(".product-heading")).toHaveText("CHASER ULTRA");
+  await shot("artifacts/chaser-lines/dark-ultra.png");
+  await page.locator(".product-page").getByRole("button", { name: /В корзину/ }).click();
+
+  const stored = await page.evaluate(() => localStorage.getItem("elfin-cart"));
+  expect(stored).toContain("chaser-lux:LQ-0033");
+  expect(stored).toContain("chaser-f-p:LQ-0041");
+  expect(stored).toContain("chaser-ultra:LQ-0043");
+  await page.getByRole("button", { name: "Корзина" }).click();
+  const cart = page.locator("section.is-current");
+  await expect(cart.getByText("CHASER LUX").first()).toBeVisible();
+  await expect(cart.getByText("Tropic Punch").first()).toBeVisible();
+  await expect(cart.getByText("CHASER F/P").first()).toBeVisible();
+  await expect(cart.getByText("Лимон").first()).toBeVisible();
+  await expect(cart.getByText("CHASER ULTRA").first()).toBeVisible();
+  await expect(cart.getByText("Energy Raspberry").first()).toBeVisible();
+  await page.getByRole("button", { name: "К оформлению" }).click();
+  await expect(page.getByText("CHASER LUX — Tropic Punch")).toBeVisible();
+  await expect(page.getByText("CHASER F/P — Лимон")).toBeVisible();
+  await expect(page.getByText("CHASER ULTRA — Energy Raspberry")).toBeVisible();
+  await page.locator(".sheet-layer.is-open").getByRole("button", { name: "Закрыть", exact: true }).click();
+
+  await page.getByRole("button", { name: "Главная" }).click();
+  await page.getByRole("button", { name: "Светлая тема" }).click();
+  await page.getByRole("button", { name: "Каталог" }).click();
+  await lineCard("CHASER LUX").evaluate((node) => node.scrollIntoView({ block: "start" }));
+  await page.screenshot({ path: "artifacts/chaser-lines/light-catalog.png" });
+  await openLine("CHASER LUX");
+  await shot("artifacts/chaser-lines/light-lux.png");
+  await openLine("CHASER F/P");
+  await shot("artifacts/chaser-lines/light-fp.png");
+  await openLine("CHASER ULTRA");
+  await shot("artifacts/chaser-lines/light-ultra.png");
+  await expect(page.locator(".product-page .hero-scene img")).toHaveCount(0);
+});
+
+test("вкусы одной жидкости собраны в одну карточку", async ({ page }) => {
+  await page.route("**/api/config", async (route) => {
+    const response = await route.fetch();
+    const json = await response.json();
+    json.catalog = "sheets";
+    await route.fulfill({ response, json });
+  });
+  await page.route("**/api/catalog**", (route) => route.fulfill({
+    json: {
+      source: "sheets",
+      products: [
+        { sku: "LQ-001", name: "Lemon Lime", category: "liquids", brand: "ELFLIQ", price: 18, stock: 11, active: true },
+        { sku: "LQ-0012", name: "Blueberry", category: "liquids", brand: "ELFLIQ", price: 18, stock: 21, active: true },
+        { sku: "LQ-0031", name: "Lemon Lime", category: "liquids", brand: "VOZOL", price: 18, stock: 2, active: true },
+        { sku: "LQ-0059", name: "Mint Ice", category: "liquids", brand: "VOZOL", price: 18, stock: 5, active: true },
+        { sku: "LQ-0062", name: "Blackberry Sour Raspberry", category: "liquids1", brand: "CHASER BLACK 50MG", price: 20, stock: 4, active: true },
+        { sku: "LQ-0073", name: "Triple Raspberry", category: "liquids1", brand: "CHASER BLACK 50MG", price: 20, stock: 4, active: true },
+        { sku: "LQ-0088", name: "Tropic Punch", category: "liquids1", brand: "CHASER LUX 50MG", price: 20, stock: 2, active: true },
+        { sku: "LQ-0090", name: "Turbo Mint", category: "liquids1", brand: "CHASER LUX 50MG", price: 20, stock: 2, active: true },
+        { sku: "LQ-0092", name: "Банан", category: "liquids1", brand: "CHASER F/P 50MG", price: 20, stock: 1, active: true },
+        { sku: "LQ-00100", name: "Лимон", category: "liquids1", brand: "CHASER F/P 50MG", price: 20, stock: 1, active: true },
+        { sku: "LQ-00106", name: "Aloe Mint", category: "liquids1", brand: "CHASER SQUID GAME 50MG", price: 20, stock: 3, active: true },
+        { sku: "LQ-00109", name: "Balerina Cappuccino", category: "liquids1", brand: "Chaser Limited Edition", price: 20, stock: 3, active: true },
+        { sku: "EL-001", name: "Cartridge 0.8Om /pack", category: "CARTRIDGE", brand: "CARTRIDGE XROS", price: 24, stock: 10, active: true },
+      ],
+    },
+  }));
+  await openShop(page);
+  await page.getByRole("button", { name: "Каталог" }).click();
+  const catalog = page.locator("section.is-current");
+  const card = (title: string) => catalog.locator("article").filter({ has: page.locator("h3", { hasText: new RegExp(`^${title}$`) }) });
+  for (const title of ["ELFLIQ", "VOZOL", "CHASER BLACK 50MG", "CHASER LUX 50MG", "CHASER F/P 50MG", "CHASER SQUID GAME 50MG", "CHASER LIMITED EDITION", "Cartridge 0.8Om /pack"]) {
+    await expect(card(title)).toHaveCount(1);
+  }
+  await expect(catalog.locator("article")).toHaveCount(8);
+  await expect(card("ELFLIQ")).toContainText("2 вкуса");
+  await expect(card("CHASER BLACK 50MG")).toContainText("2 вкуса");
+  await expect(card("CHASER LUX 50MG").locator("img")).toHaveAttribute("src", "/assets/products/liquids/chaser-lux-turbo-mint.png");
+  await expect(card("CHASER F/P 50MG").locator("img")).toHaveCount(0);
+  await expect(card("CHASER BLACK 50MG").locator("img")).toHaveCount(0);
+  await expect(card("CHASER SQUID GAME 50MG").locator("img")).toHaveCount(0);
+  await expect(card("CHASER LIMITED EDITION").locator("img")).toHaveCount(0);
+  await expect(card("Cartridge 0.8Om /pack").locator("img")).toHaveAttribute("src", "/assets/products/pods/xros-08-mesh-4pcs.png");
+
+  await card("CHASER LUX 50MG").locator("h3").click();
+  await page.locator(".product-page").getByRole("button", { name: "Выбрать вкус" }).click();
+  const lux = await page.getByRole("option").allTextContents();
+  expect(lux).toHaveLength(2);
+  expect(lux.some((item) => item.includes("Turbo Mint") && item.includes("· 2"))).toBeTruthy();
+  expect(lux.some((item) => item.includes("Tropic Punch") && item.includes("· 2"))).toBeTruthy();
+  expect(lux.some((item) => item.includes("Банан") || item.includes("Triple Raspberry"))).toBeFalsy();
+  await page.keyboard.press("Escape");
+
+  await page.getByRole("button", { name: "Каталог" }).click();
+  await card("CHASER F/P 50MG").locator("h3").click();
+  await page.locator(".product-page").getByRole("button", { name: "Выбрать вкус" }).click();
+  const fp = await page.getByRole("option").allTextContents();
+  expect(fp).toHaveLength(2);
+  expect(fp.some((item) => item.includes("Банан") && item.includes("· 1"))).toBeTruthy();
+  expect(fp.some((item) => item.includes("Лимон") && item.includes("· 1"))).toBeTruthy();
+  await expect(page.locator(".product-page .hero-scene img")).toHaveCount(0);
 });
 
 test("характеристики на 320 не остаются под кнопкой", async ({ page }) => {

@@ -2,6 +2,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { normalizeCouriers, normalizePrices, normalizeProducts } from "./hhNormalize.js";
+import { catalogIdentity } from "./catalogLine.js";
 import { brandGroup, priceCategory, sectionLabel } from "./categoryRules.js";
 import { calculateOrderPricing, priceOrder } from "./pricing.js";
 import { courierSlots } from "./slots.js";
@@ -56,6 +57,12 @@ record("active-spellings", mapped.products[0].active === false && mapped.product
 
 record("section-one", sectionLabel("liquids") === "Жидкости" && sectionLabel("liquids1") === "Жидкости" && priceCategory("liquids") === "liquids" && priceCategory("liquids1") === "liquids1");
 record("chaser-filter", brandGroup("CHASER FP") === "CHASER" && brandGroup("CHASER LUX") === "CHASER" && brandGroup("CHASER") === "CHASER" && brandGroup("HQD") === "HQD");
+const lux = catalogIdentity("Chaser Lux");
+const fp = catalogIdentity("CHASER F/P");
+const fpSpelling = catalogIdentity("CHASER FP");
+const ultra = catalogIdentity("Chaser ULTRA");
+const elfliq = catalogIdentity("ELFLIQ");
+record("chaser-lines", lux.title === "CHASER LUX" && lux.brand === "CHASER" && lux.productLine === "LUX" && fp.title === "CHASER F/P" && fp.productLine === "F/P" && fp.key === fpSpelling.key && ultra.title === "CHASER ULTRA" && ultra.productLine === "ULTRA" && lux.key !== fp.key && fp.key !== ultra.key && elfliq.key === "ELFLIQ" && elfliq.productLine === "");
 
 const tiers = calculateOrderPricing([
   { quantity: 2, price: 10, category: "liquids" },

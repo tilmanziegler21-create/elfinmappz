@@ -4,6 +4,7 @@ import { CountBump } from "./CountBump";
 import { preloadImages } from "./ImagePreloader";
 import { sectionLabel } from "./categoryRules";
 import { ProductFloatStage } from "./ProductFloatStage";
+import { lineTitle } from "./catalogLine";
 import { mediaByBrand, mediaBySku, mediaFor } from "./productMedia";
 import { VariantBottomSheet } from "./VariantBottomSheet";
 import { addPulse, liteMotion, productTap } from "./productMotion";
@@ -101,7 +102,7 @@ export function ProductScreen({
   const variant = current.variants.find((item) => item.id === variantId) ?? null;
   const flavorChoice = current.variants.some((item) => item.label !== "—" && !/\d+\s*мл/i.test(item.label))
     && !current.variants.some((item) => /\d+\s*мл/i.test(item.label));
-  const media = (variant ? mediaBySku(variant.id) : null) ?? mediaFor(current.id) ?? mediaBySku(current.id) ?? mediaByBrand(current.brand || current.name);
+  const media = (variant ? mediaBySku(variant.id) : null) ?? mediaFor(current.id) ?? mediaBySku(current.id) ?? mediaByBrand(lineTitle(current));
   const heroImage = media?.image ?? current.heroImage;
   const preset = media?.scene ?? (current.id === "elfliq-watermelon" ? "liquid-float" as const : undefined);
   const accent = media?.accent ?? (current.id === "elfliq-watermelon" ? "melon" as const : undefined);

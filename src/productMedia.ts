@@ -32,8 +32,8 @@ export function mediaBySku(sku: string): MediaEntry | null {
 
 const brandMedia: Array<{ test: (brand: string) => boolean; id: string }> = [
   { test: (brand) => brand.startsWith("ELFLIQ"), id: "elfliq-watermelon" },
-  { test: (brand) => brand.startsWith("CHASER") && (brand.includes("F/P") || brand.includes("FP")), id: "chaser-fp-cherry" },
-  { test: (brand) => brand.startsWith("CHASER"), id: "chaser-lux-turbo-mint" },
+  { test: (brand) => brand === "CHASER LUX" || brand.startsWith("CHASER LUX "), id: "chaser-lux-turbo-mint" },
+  { test: (brand) => brand.includes("CARTRIDGE") && brand.includes("XROS"), id: "pd-0013" },
   { test: (brand) => brand.startsWith("HQD"), id: "hqd-grapey" },
   { test: (brand) => brand.startsWith("VOZOL"), id: "vozol-strawberry-ice" },
   { test: (brand) => brand.includes("XROS 6"), id: "xros-6-mini" },

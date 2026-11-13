@@ -36,6 +36,19 @@ async function ready() {
   throw new Error("auth API did not start");
 }
 
+async function authed(port, path, jwt, body) {
+  const response = await fetch(`http://127.0.0.1:${port}${path}`, {
+    method: body ? "POST" : "GET",
+    headers: {
+      "content-type": "application/json",
+      ...(jwt ? { authorization: `Bearer ${jwt}` } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const json = await response.json().catch(() => ({}));
+  return { status: response.status, json };
+}
+
 async function post(body) {
   const response = await fetch(`http://127.0.0.1:${port}/api/auth/telegram`, {
     method: "POST",
@@ -66,6 +79,20 @@ try {
   if (forged.status !== 401) throw new Error(`forged status ${forged.status}`);
   const client = await post({ tgId: "123456789", username: "customer_example" });
   if (client.status !== 401) throw new Error("client-supplied id was accepted");
+  const jwt = signed.json.token;
+  if (!jwt || typeof jwt !== "string") throw new Error("jwt was not issued");
+  const history = await authed(port, "/api/order/history?city=HH", jwt);
+  if (history.status !== 200 || !Array.isArray(history.json.orders)) throw new Error(`jwt history ${history.status}`);
+  const open = await authed(port, "/api/order/history?city=HH");
+  if (open.status !== 401 || open.json.error !== "Authentication required") throw new Error(`open history ${open.status}`);
+  const stranger = await authed(port, "/api/courier/orders/status", jwt, { city: "HH", orderId: "ORD-OTHER", status: "delivered" });
+  if (stranger.status !== 403 || stranger.json.error !== "Forbidden") throw new Error(`stranger deliver ${stranger.status}`);
+  const courierLogin = await post({ initData: signInitData({ id: 100000001, first_name: "Север", username: "courier_north" }, now, token) });
+  if (courierLogin.status !== 200 || courierLogin.json.user?.status !== "courier") throw new Error("courier session was not issued");
+  const missing = await authed(port, "/api/courier/orders/status", courierLogin.json.token, { city: "HH", orderId: "ORD-NONE", status: "delivered" });
+  if (missing.status !== 404 || missing.json.error !== "Order not found") throw new Error(`courier missing ${missing.status}`);
+  const blocked = await authed(port, "/api/order/create", jwt, { city: "HH", items: [{ productId: "north:10", quantity: 1 }] });
+  if (blocked.status !== 503 || blocked.json.error !== "ORDERS_NEED_DATABASE") throw new Error(`ephemeral create ${blocked.status} ${blocked.json.error}`);
   console.log("telegram auth ok");
 } finally {
   stop();

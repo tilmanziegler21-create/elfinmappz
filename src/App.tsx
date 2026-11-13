@@ -14,6 +14,7 @@ import { CourierScreen } from "./CourierScreen";
 import { OrdersScreen } from "./OrdersScreen";
 import { CountBump } from "./CountBump";
 import { ProductScreen } from "./ProductScreen";
+import { catalogIdentity, lineTitle } from "./catalogLine";
 import { mediaByBrand, mediaBySku } from "./productMedia";
 import { CART_KEY, clampLineQty, defaultVariant, euro, findProduct, lineKey, products, readLooseCart, sanitizeCart, setSheetCatalog, type Availability, type Product, type Variant } from "./products";
 import { sectionItem, sectionList, tapSpring } from "./motion";
@@ -47,15 +48,6 @@ type SheetRow = {
   image?: string;
 };
 
-function lineName(brand: string) {
-  const value = brand.trim().toUpperCase().replace(/\s+/g, " ");
-  if (value.startsWith("ELFLIQ")) return "ELFLIQ";
-  if (value.startsWith("CHASER")) return "CHASER";
-  if (value.startsWith("VOZOL")) return "VOZOL";
-  if (value.startsWith("HQD")) return "HQD";
-  return value || "ELFIN";
-}
-
 function flavorCount(count: number) {
   const mod10 = count % 10;
   const mod100 = count % 100;
@@ -85,11 +77,13 @@ function productFromRows(items: SheetRow[], name: string, image?: string, id?: s
   }).sort((a, b) => a.label.localeCompare(b.label, "ru"));
   const open = variants.find((item) => item.availability !== "out" && item.stock > 0);
   const stock = variants.reduce((sum, item) => sum + item.stock, 0);
+  const identity = catalogIdentity(items[0].brand || "");
   return {
     id: id || productSlug(name),
     name,
     flavor: variants.length === 1 ? variants[0].label : flavorCount(variants.length),
-    brand: lineName(items[0].brand || ""),
+    brand: identity.brand,
+    productLine: identity.productLine || undefined,
     category: items[0].category,
     price: open?.price ?? variants[0]?.price ?? 0,
     availability: stock <= 0 ? "out" : open && open.stock <= 2 && variants.filter((item) => item.stock > 0).length === 1 ? "low" : "in",
@@ -104,21 +98,21 @@ function productFromRows(items: SheetRow[], name: string, image?: string, id?: s
 function groupSheetRows(rows: SheetRow[]): Product[] {
   const groups = new Map<string, SheetRow[]>();
   for (const row of rows) {
-    const name = lineName(row.brand || "");
-    const list = groups.get(name) || [];
+    const identity = catalogIdentity(row.brand || "");
+    const list = groups.get(identity.key) || [];
     list.push(row);
-    groups.set(name, list);
+    groups.set(identity.key, list);
   }
   const grouped: Product[] = [];
   for (const items of groups.values()) {
-    const name = lineName(items[0].brand || "");
+    const identity = catalogIdentity(items[0].brand || "");
     const own = items.filter((row) => mediaBySku(row.sku));
     const shared = items.filter((row) => !mediaBySku(row.sku));
     for (const row of own) {
       const media = mediaBySku(row.sku);
-      grouped.push(productFromRows([row], (row.name || name).trim(), media?.image, row.sku.toLowerCase()));
+      grouped.push(productFromRows([row], (row.name || identity.title).trim(), media?.image, row.sku.toLowerCase()));
     }
-    if (shared.length) grouped.push(productFromRows(shared, name, mediaByBrand(name)?.image));
+    if (shared.length) grouped.push(productFromRows(shared, identity.title, mediaByBrand(identity.title)?.image));
   }
   return grouped;
 }
@@ -810,7 +804,7 @@ function Home({
           {cards.map((item) => (
             <button key={item.id} type="button" className="product home-card" onClick={() => onProduct(item.id)}>
               <HomeArt item={item} />
-              <span className="product-name">{item.brand || item.name}</span>
+              <span className="product-name">{lineTitle(item)}</span>
               <span className="product-flavor">{item.flavor}</span>
               <span className="product-price"><strong>{live ? euro(item.price) : "—"}</strong></span>
             </button>

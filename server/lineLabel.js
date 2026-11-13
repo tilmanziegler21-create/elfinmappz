@@ -1,3 +1,5 @@
+import { catalogIdentity } from "./catalogLine.js";
+
 function clean(value) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
 }
@@ -7,7 +9,8 @@ function same(left, right) {
 }
 
 export function formatLine(item) {
-  const brand = clean(item?.brand);
+  const rawBrand = clean(item?.brand);
+  const brand = rawBrand ? catalogIdentity(rawBrand).title : "";
   const rawName = clean(item?.name);
   const variant = clean(item?.variant);
   const qty = Number(item?.quantity ?? item?.qty ?? 1);
