@@ -3,7 +3,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { EmptyState } from "./EmptyState";
 import { lineTitle } from "./catalogLine";
 import { cartTitle } from "./lineLabel";
-import { cartEntries, cartMoney, euro } from "./products";
+import { priceCart, euro } from "./products";
 import { favoriteExit } from "./productMotion";
 import { cardItem, cardList, ease, tapSpring } from "./motion";
 import { moneyLocale, useI18n } from "./i18n";
@@ -30,9 +30,10 @@ export function CartScreen({
   const reduce = useReducedMotion();
   const { t, lang } = useI18n();
   const money = moneyLocale(lang);
-  const lines = cartEntries(cart);
+  const priced = priceCart(cart);
+  const lines = priced.lines;
   const units = lines.reduce((sum, line) => sum + line.qty, 0);
-  const total = cartMoney(cart);
+  const total = priced.total;
   const [undo, setUndo] = useState<{ key: string; qty: number } | null>(null);
   const [revealEmpty, setRevealEmpty] = useState(lines.length === 0);
   const previousCount = useRef(lines.length);
@@ -115,7 +116,7 @@ export function CartScreen({
                       <span className="cart-brand">{lineTitle(line.product)}</span>
                       <span className="cart-name" title={cartTitle(line.product, line.variant)}>{cartDetail(line.product, line.variant)}</span>
                       <span className="cart-meta">
-                        {euro(line.variant.price, money)}
+                        {euro(line.unitPrice, money)}
                       </span>
                     </span>
                   </button>

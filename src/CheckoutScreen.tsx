@@ -5,7 +5,7 @@ import { EmptyState } from "./EmptyState";
 import { api, todayDate, type ApiCourier, type AuthPhase, type SessionUser } from "./api";
 import { courierChatLink } from "./telegram";
 import { cartTitle, orderNumber } from "./lineLabel";
-import { cartEntries, cartMoney, euro } from "./products";
+import { priceCart, euro } from "./products";
 import { tapSpring } from "./motion";
 import { moneyLocale, useI18n } from "./i18n";
 
@@ -45,8 +45,9 @@ export function CheckoutScreen({
   const reduce = useReducedMotion();
   const { t, lang } = useI18n();
   const money = moneyLocale(lang);
-  const lines = cartEntries(cart);
-  const total = cartMoney(cart);
+  const priced = priceCart(cart);
+  const lines = priced.lines;
+  const total = priced.total;
   const idempotencyKey = useRef(`checkout-${crypto.randomUUID()}`);
   const createdId = useRef<string | null>(null);
   const confirmed = useRef(false);

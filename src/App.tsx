@@ -16,7 +16,7 @@ import { CountBump } from "./CountBump";
 import { ProductScreen } from "./ProductScreen";
 import { catalogIdentity, lineTitle } from "./catalogLine";
 import { mediaByBrand, mediaBySku } from "./productMedia";
-import { CART_KEY, clampLineQty, defaultVariant, euro, findProduct, lineKey, products, readLooseCart, sanitizeCart, setSheetCatalog, type Availability, type Product, type Variant } from "./products";
+import { CART_KEY, clampLineQty, defaultVariant, euro, findProduct, lineKey, products, readLooseCart, sanitizeCart, setLiquidTiers, setSheetCatalog, type Availability, type Product, type Variant } from "./products";
 import { sectionItem, sectionList, tapSpring } from "./motion";
 import { prewarmImages } from "./ImagePreloader";
 import { languageName, languages, useI18n, type Lang } from "./i18n";
@@ -240,6 +240,7 @@ export function App() {
         setBotUrl(telegramBotLink(config.botUsername));
         if (config.catalog === "demo") {
           setSheetCatalog([]);
+          setLiquidTiers(null);
           settleCart();
           setCatalogMode("demo");
         } else setCatalogMode("loading");
@@ -323,21 +324,26 @@ export function App() {
     if (!configReady || catalogMode === "error") return;
     let alive = true;
     if (catalogMode === "loading") {
-      api<{ source?: string; products?: SheetRow[] }>(`/api/catalog?city=${encodeURIComponent(shopCity)}`, { token: session?.token })
+      api<{ source?: string; products?: SheetRow[]; liquidPrices?: unknown }>(`/api/catalog?city=${encodeURIComponent(shopCity)}`, { token: session?.token })
         .then((data) => {
           if (!alive) return;
           if (data.source !== "sheets" || !Array.isArray(data.products)) {
+            setLiquidTiers(null);
             setCatalogMode("error");
             return;
           }
           const grouped = groupSheetRows(data.products);
           setSheetCatalog(grouped);
+          setLiquidTiers(data.liquidPrices);
           setLiveProducts(grouped);
           settleCart();
           setCatalogMode("live");
         })
         .catch(() => {
-          if (alive) setCatalogMode("error");
+          if (alive) {
+            setLiquidTiers(null);
+            setCatalogMode("error");
+          }
         });
     }
     api<{ couriers?: ApiCourier[] }>(`/api/couriers?city=${encodeURIComponent(shopCity)}`, { token: session?.token })

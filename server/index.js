@@ -996,7 +996,7 @@ app.get("/api/catalog", async (req, res) => {
   if (useLocalCatalog()) return res.json({ source: "demo", city, products: localProducts() });
   try {
     const data = await readHamburgSources();
-    res.json({ source: "sheets", city: "HH", products: data.products.map(withMedia) });
+    res.json({ source: "sheets", city: "HH", products: data.products.map(withMedia), liquidPrices: liquidTierMap(data.prices?.rules) });
   } catch (error) {
     const failure = sheetsFailure(error);
     res.status(failure.status).json(failure.body);

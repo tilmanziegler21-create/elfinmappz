@@ -231,9 +231,43 @@ export const availabilityLabel: Record<Availability, string> = {
 };
 
 let sheetCatalog: Product[] = [];
+let liquidTiers: Record<string, number> | null = null;
 
 export function setSheetCatalog(items: Product[]) {
   sheetCatalog = items;
+}
+
+export function setLiquidTiers(value: unknown) {
+  const source = value && typeof value === "object" && !Array.isArray(value)
+    ? (value as { liquids?: unknown }).liquids
+    : null;
+  if (!source || typeof source !== "object" || Array.isArray(source)) {
+    liquidTiers = null;
+    return;
+  }
+  const next: Record<string, number> = {};
+  for (const [key, raw] of Object.entries(source)) {
+    const qty = Number(key);
+    const price = Number(raw);
+    if (Number.isFinite(qty) && qty > 0 && Number.isFinite(price) && price > 0) next[String(qty)] = price;
+  }
+  liquidTiers = Object.keys(next).length ? next : null;
+}
+
+export function liquidUnitAt(quantity: number) {
+  if (!liquidTiers || quantity <= 0) return null;
+  const tiers = Object.entries(liquidTiers)
+    .map(([qty, price]) => ({ qty: Number(qty), price }))
+    .filter((item) => item.qty > 0)
+    .sort((a, b) => a.qty - b.qty);
+  if (!tiers.length) return null;
+  let unit = tiers[0].price;
+  for (const tier of tiers) if (quantity >= tier.qty) unit = tier.price;
+  return unit;
+}
+
+function isPlainLiquid(category: string) {
+  return category.trim().toLowerCase() === "liquids";
 }
 
 export function findProduct(id: string) {
@@ -279,9 +313,21 @@ export function cartEntries(cart: Record<string, number>) {
   });
 }
 
+export function priceCart(cart: Record<string, number>) {
+  const entries = cartEntries(cart);
+  const liquidsQty = entries.reduce((sum, line) => sum + (isPlainLiquid(line.product.category) ? line.qty : 0), 0);
+  const liquidsUnit = liquidUnitAt(liquidsQty);
+  let cents = 0;
+  const lines = entries.map((line) => {
+    const unitPrice = isPlainLiquid(line.product.category) && liquidsUnit != null ? liquidsUnit : line.variant.price;
+    cents += Math.round(unitPrice * 100) * line.qty;
+    return { ...line, unitPrice, total: (Math.round(unitPrice * 100) * line.qty) / 100 };
+  });
+  return { lines, total: cents / 100 };
+}
+
 export function cartMoney(cart: Record<string, number>) {
-  const cents = cartEntries(cart).reduce((sum, line) => sum + Math.round(line.variant.price * 100) * line.qty, 0);
-  return cents / 100;
+  return priceCart(cart).total;
 }
 
 export function sanitizeCart(value: unknown): { cart: Record<string, number>; dropped: boolean } {
