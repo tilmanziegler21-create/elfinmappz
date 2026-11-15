@@ -4,7 +4,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import express from "express";
 import jwt from "jsonwebtoken";
-import { priceOrder } from "./pricing.js";
+import { liquidTierMap, priceOrder } from "./pricing.js";
 import {
   activeReservations,
   addReservation,
@@ -1120,7 +1120,8 @@ app.post("/api/order/create", beginOrderTrace, refuseEphemeralOrders, requireAut
     });
   }
 
-  const priced = priceOrder(normalized, workbook().liquidPrices, req.body?.promoCode, req.user, db().promos);
+  const sheetTiers = liquidTierMap(catalog.prices?.rules);
+  const priced = priceOrder(normalized, sheetTiers || workbook().liquidPrices, req.body?.promoCode, req.user, db().promos);
   if (!priced.ok) {
     if (key) delete db().orderIdempotency[key];
     mark(req, "ORDER_VALIDATED", priceFailureCode(priced.error));

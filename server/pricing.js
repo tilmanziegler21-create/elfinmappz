@@ -33,6 +33,17 @@ function unitPriceAtQuantity(quantity, prices) {
   return unitPrice;
 }
 
+export function liquidTierMap(rules) {
+  const liquids = {};
+  for (const rule of rules || []) {
+    const qty = Number(rule?.qtyFrom);
+    const price = Number(rule?.price);
+    if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(price) || price <= 0) continue;
+    liquids[qty] = price;
+  }
+  return Object.keys(liquids).length ? { liquids } : null;
+}
+
 export function calculateOrderPricing(items, liquidPrices) {
   const rules = splitRules(liquidPrices);
   let subtotal = 0;

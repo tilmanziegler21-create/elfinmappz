@@ -4,7 +4,7 @@ import path from "path";
 import { normalizeCouriers, normalizePrices, normalizeProducts } from "./hhNormalize.js";
 import { catalogIdentity } from "./catalogLine.js";
 import { brandGroup, priceCategory, sectionLabel } from "./categoryRules.js";
-import { calculateOrderPricing, priceOrder } from "./pricing.js";
+import { calculateOrderPricing, liquidTierMap, priceOrder } from "./pricing.js";
 import { courierSlots } from "./slots.js";
 
 process.env.NODE_ENV = "test";
@@ -69,6 +69,12 @@ const tiers = calculateOrderPricing([
   { quantity: 2, price: 10, category: "liquids1" },
 ], { liquids: { 2: 5 }, liquids1: { 2: 8 } });
 record("liquids1-separate", tiers.subtotal === 40 && tiers.discount === 14 && tiers.ambiguous === false, JSON.stringify(tiers));
+const liveTiers = liquidTierMap([{ qtyFrom: 1, price: 18 }, { qtyFrom: 2, price: 16 }, { qtyFrom: 3, price: 15 }]);
+const oneLiquid = calculateOrderPricing([{ quantity: 1, price: 18, category: "liquids" }], liveTiers);
+const twoLiquids = calculateOrderPricing([{ quantity: 2, price: 18, category: "liquids" }], liveTiers);
+const threeLiquids = calculateOrderPricing([{ quantity: 3, price: 18, category: "liquids" }], liveTiers);
+const chaserQty = calculateOrderPricing([{ quantity: 3, price: 20, category: "liquids1" }], liveTiers);
+record("liquids-qty-tiers", oneLiquid.subtotal === 18 && oneLiquid.discount === 0 && twoLiquids.subtotal === 36 && twoLiquids.discount === 4 && threeLiquids.subtotal === 54 && threeLiquids.discount === 9 && chaserQty.discount === 0, JSON.stringify({ oneLiquid, twoLiquids, threeLiquids, chaserQty }));
 
 const flat = calculateOrderPricing([
   { quantity: 2, price: 10, category: "liquids" },

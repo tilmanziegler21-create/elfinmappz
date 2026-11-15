@@ -23,6 +23,38 @@
     "accent": "cold",
     "category": "liquids"
   },
+  "chaser-fp-barberry": {
+    "sku": "",
+    "image": "/assets/products/liquids/chaser-fp-barberry.png",
+    "imageType": "transparent",
+    "scene": "liquid-float",
+    "accent": "melon",
+    "category": "liquids"
+  },
+  "chaser-special": {
+    "sku": "",
+    "image": "/assets/products/liquids/chaser-special-7years.png",
+    "imageType": "transparent",
+    "scene": "liquid-float",
+    "accent": "grape",
+    "category": "liquids"
+  },
+  "chaser-squid-game": {
+    "sku": "",
+    "image": "/assets/products/liquids/chaser-squid-game.png",
+    "imageType": "transparent",
+    "scene": "liquid-float",
+    "accent": "frost",
+    "category": "liquids"
+  },
+  "chaser-black": {
+    "sku": "",
+    "image": "/assets/products/liquids/chaser-black-blueberry-gum.png",
+    "imageType": "transparent",
+    "scene": "liquid-float",
+    "accent": "cold",
+    "category": "liquids"
+  },
   "hqd-grapey": {
     "sku": "",
     "image": "/assets/products/liquids/hqd-grapey.png",

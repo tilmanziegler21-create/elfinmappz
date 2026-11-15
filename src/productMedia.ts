@@ -32,6 +32,10 @@ export function mediaBySku(sku: string): MediaEntry | null {
 
 const brandMedia: Array<{ test: (brand: string) => boolean; id: string }> = [
   { test: (brand) => brand.startsWith("ELFLIQ"), id: "elfliq-watermelon" },
+  { test: (brand) => brand.includes("SQUID"), id: "chaser-squid-game" },
+  { test: (brand) => brand.includes("F/P") || brand.includes(" FP") || brand.endsWith(" FP"), id: "chaser-fp-barberry" },
+  { test: (brand) => brand.includes("BLACK"), id: "chaser-black" },
+  { test: (brand) => brand.includes("LIMITED EDITION") || brand.includes("SPECIAL EDITION"), id: "chaser-special" },
   { test: (brand) => brand === "CHASER LUX" || brand.startsWith("CHASER LUX "), id: "chaser-lux-turbo-mint" },
   { test: (brand) => brand.includes("CARTRIDGE") && brand.includes("XROS"), id: "pd-0013" },
   { test: (brand) => brand.startsWith("HQD"), id: "hqd-grapey" },

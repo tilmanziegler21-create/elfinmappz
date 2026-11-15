@@ -186,7 +186,7 @@ test("линейки CHASER не смешиваются", async ({ page }) => {
   await expect(lineCard("ELFLIQ")).toHaveCount(1);
   await expect(lineCard("VOZOL")).toHaveCount(1);
   await expect(lineCard("CHASER LUX").locator("img")).toHaveAttribute("src", "/assets/products/liquids/chaser-lux-turbo-mint.png");
-  await expect(lineCard("CHASER F/P").locator("img")).toHaveCount(0);
+  await expect(lineCard("CHASER F/P").locator("img")).toHaveAttribute("src", "/assets/products/liquids/chaser-fp-barberry.png");
   await expect(lineCard("CHASER ULTRA").locator("img")).toHaveCount(0);
   await expect(lineCard("CHASER ULTRA").getByText("Нет фото")).toBeVisible();
   await lineCard("CHASER LUX").evaluate((node) => node.scrollIntoView({ block: "start" }));
@@ -243,7 +243,7 @@ test("линейки CHASER не смешиваются", async ({ page }) => {
   expect(names[0]).toContain("Лимон");
   expect(names[0]).toContain("· 1");
   await page.getByRole("option", { name: /Лимон/ }).click();
-  await expect(page.locator(".product-page .hero-scene img")).toHaveCount(0);
+  await expect(page.locator(".product-page .hero-scene img")).toHaveAttribute("src", "/assets/products/liquids/chaser-fp-barberry.png");
   await expect(page.locator(".product-heading")).toHaveText("CHASER F/P");
   await shot("artifacts/chaser-lines/dark-fp.png");
   await page.locator(".product-page").getByRole("button", { name: /В корзину/ }).click();
@@ -331,10 +331,10 @@ test("вкусы одной жидкости собраны в одну карт
   await expect(card("ELFLIQ")).toContainText("2 вкуса");
   await expect(card("CHASER BLACK 50MG")).toContainText("2 вкуса");
   await expect(card("CHASER LUX 50MG").locator("img")).toHaveAttribute("src", "/assets/products/liquids/chaser-lux-turbo-mint.png");
-  await expect(card("CHASER F/P 50MG").locator("img")).toHaveCount(0);
-  await expect(card("CHASER BLACK 50MG").locator("img")).toHaveCount(0);
-  await expect(card("CHASER SQUID GAME 50MG").locator("img")).toHaveCount(0);
-  await expect(card("CHASER LIMITED EDITION").locator("img")).toHaveCount(0);
+  await expect(card("CHASER F/P 50MG").locator("img")).toHaveAttribute("src", "/assets/products/liquids/chaser-fp-barberry.png");
+  await expect(card("CHASER BLACK 50MG").locator("img")).toHaveAttribute("src", "/assets/products/liquids/chaser-black-blueberry-gum.png");
+  await expect(card("CHASER SQUID GAME 50MG").locator("img")).toHaveAttribute("src", "/assets/products/liquids/chaser-squid-game.png");
+  await expect(card("CHASER LIMITED EDITION").locator("img")).toHaveAttribute("src", "/assets/products/liquids/chaser-special-7years.png");
   await expect(card("Cartridge 0.8Om /pack").locator("img")).toHaveAttribute("src", "/assets/products/pods/xros-08-mesh-4pcs.png");
 
   await card("CHASER LUX 50MG").locator("h3").click();
@@ -353,7 +353,7 @@ test("вкусы одной жидкости собраны в одну карт
   expect(fp).toHaveLength(2);
   expect(fp.some((item) => item.includes("Банан") && item.includes("· 1"))).toBeTruthy();
   expect(fp.some((item) => item.includes("Лимон") && item.includes("· 1"))).toBeTruthy();
-  await expect(page.locator(".product-page .hero-scene img")).toHaveCount(0);
+  await expect(page.locator(".product-page .hero-scene img")).toHaveAttribute("src", "/assets/products/liquids/chaser-fp-barberry.png");
 });
 
 test("характеристики на 320 не остаются под кнопкой", async ({ page }) => {
