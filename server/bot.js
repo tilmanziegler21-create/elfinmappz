@@ -185,7 +185,7 @@ async function profileView(user, ctx) {
     lines.push(
       `${t(lang, "profileDone")}: ${profile.delivered}`,
       `${t(lang, "profileLast")}: ${when(profile.last)}`,
-      `${t(lang, "profileLevel")}: ${profile.level} / 10${profile.percent > 0 ? ` · −${profile.percent}%` : ""}`,
+      `${t(lang, "profileLevel")}: ${profile.level} / 10`,
     );
   }
   const text = lines.join("\n");

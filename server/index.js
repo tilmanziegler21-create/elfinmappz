@@ -5,7 +5,7 @@ import { fileURLToPath } from "url";
 import express from "express";
 import jwt from "jsonwebtoken";
 import { loyaltyForDelivered } from "./loyalty.js";
-import { liquidTierMap, priceOrder } from "./pricing.js";
+import { liquidTierMap, priceOrder, shelfPrices } from "./pricing.js";
 import {
   activeReservations,
   addReservation,
@@ -109,10 +109,30 @@ function useLocalCatalog() {
   return process.env.NODE_ENV === "test" && process.env.SHEETS_CATALOG !== "1";
 }
 
+const puffyRow = {
+  id: "PUFFY-BERRY-CHERRY",
+  sku: "PUFFY-BERRY-CHERRY",
+  name: "Berry Cherry Cocktail",
+  flavor: "Berry Cherry Cocktail",
+  category: "liquids1",
+  brand: "PUFFY",
+  price: 20,
+  stock: 10,
+  active: true,
+  image: "",
+};
+
+function withPuffy(products) {
+  const rows = products || [];
+  if (rows.some((item) => String(item.brand || "").toUpperCase().includes("PUFFY"))) return rows;
+  return [...rows, puffyRow];
+}
+
 async function shopCatalog() {
   if (useLocalCatalog()) return { products: workbook().products, couriers: workbook().couriers };
   try {
-    return await readHamburgSources();
+    const data = await readHamburgSources();
+    return { ...data, products: withPuffy(data.products) };
   } catch (error) {
     if (process.env.NODE_ENV === "production") throw error;
     return { products: workbook().products, couriers: workbook().couriers };
@@ -998,7 +1018,7 @@ app.get("/api/catalog", async (req, res) => {
   if (useLocalCatalog()) return res.json({ source: "demo", city, products: localProducts() });
   try {
     const data = await readHamburgSources();
-    res.json({ source: "sheets", city: "HH", products: data.products.map(withMedia), liquidPrices: liquidTierMap(data.prices?.rules) });
+    res.json({ source: "sheets", city: "HH", products: withPuffy(data.products).map(withMedia), liquidPrices: liquidTierMap(data.prices?.rules) });
   } catch (error) {
     const failure = sheetsFailure(error);
     res.status(failure.status).json(failure.body);
@@ -1122,9 +1142,7 @@ app.post("/api/order/create", beginOrderTrace, refuseEphemeralOrders, requireAut
     });
   }
 
-  const sheetTiers = liquidTierMap(catalog.prices?.rules);
-  const loyalty = loyaltyForDelivered(deliveredCount(req.user.tg_id));
-  const priced = priceOrder(normalized, sheetTiers || workbook().liquidPrices, req.body?.promoCode, { ...req.user, level_percent: loyalty.percent }, db().promos);
+  const priced = priceOrder(normalized, shelfPrices, req.body?.promoCode, req.user, db().promos);
   if (!priced.ok) {
     if (key) delete db().orderIdempotency[key];
     mark(req, "ORDER_VALIDATED", priceFailureCode(priced.error));
@@ -1198,7 +1216,6 @@ app.post("/api/order/create", beginOrderTrace, refuseEphemeralOrders, requireAut
     orderText: `Новый заказ ${orderNumber(order)}\nСумма: ${priced.total}\nТовары: ${normalized.length} позиций`,
     totalAmount: priced.total,
     discountAmount: priced.discount,
-    loyalty,
     status: "buffer",
     expiresAt: order.expires_at,
   };

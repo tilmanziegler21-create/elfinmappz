@@ -231,43 +231,42 @@ export const availabilityLabel: Record<Availability, string> = {
 };
 
 let sheetCatalog: Product[] = [];
-let liquidTiers: Record<string, number> | null = null;
+let shelfOn = false;
+
+const shelfPrices = {
+  liquids: { 1: 18, 2: 16, 3: 14 },
+  liquids1: { 1: 20, 2: 18, 3: 17, 5: 15 },
+} as const;
 
 export function setSheetCatalog(items: Product[]) {
   sheetCatalog = items;
 }
 
-export function setLiquidTiers(value: unknown) {
-  const source = value && typeof value === "object" && !Array.isArray(value)
-    ? (value as { liquids?: unknown }).liquids
-    : null;
-  if (!source || typeof source !== "object" || Array.isArray(source)) {
-    liquidTiers = null;
-    return;
-  }
-  const next: Record<string, number> = {};
-  for (const [key, raw] of Object.entries(source)) {
-    const qty = Number(key);
-    const price = Number(raw);
-    if (Number.isFinite(qty) && qty > 0 && Number.isFinite(price) && price > 0) next[String(qty)] = price;
-  }
-  liquidTiers = Object.keys(next).length ? next : null;
+export function setShelfPrices(on: boolean) {
+  shelfOn = on;
 }
 
-export function liquidUnitAt(quantity: number) {
-  if (!liquidTiers || quantity <= 0) return null;
-  const tiers = Object.entries(liquidTiers)
-    .map(([qty, price]) => ({ qty: Number(qty), price }))
-    .filter((item) => item.qty > 0)
-    .sort((a, b) => a.qty - b.qty);
-  if (!tiers.length) return null;
-  let unit = tiers[0].price;
-  for (const tier of tiers) if (quantity >= tier.qty) unit = tier.price;
+function priceBucket(category: string) {
+  const value = category.trim().toLowerCase();
+  if (value === "liquids" || value === "liquids1") return value;
+  return "";
+}
+
+export function tierUnit(category: string, quantity: number) {
+  const bucket = priceBucket(category);
+  if (!shelfOn || !bucket || quantity <= 0) return null;
+  const table = shelfPrices[bucket];
+  let unit: number | null = null;
+  for (const [key, price] of Object.entries(table)) {
+    if (quantity >= Number(key)) unit = price;
+  }
   return unit;
 }
 
-function isPlainLiquid(category: string) {
-  return category.trim().toLowerCase() === "liquids";
+export function lineUnit(category: string, rowPrice: number, quantity: number) {
+  const tier = tierUnit(category, quantity);
+  if (tier == null) return rowPrice;
+  return Math.min(rowPrice, tier);
 }
 
 export function findProduct(id: string) {
@@ -315,11 +314,15 @@ export function cartEntries(cart: Record<string, number>) {
 
 export function priceCart(cart: Record<string, number>) {
   const entries = cartEntries(cart);
-  const liquidsQty = entries.reduce((sum, line) => sum + (isPlainLiquid(line.product.category) ? line.qty : 0), 0);
-  const liquidsUnit = liquidUnitAt(liquidsQty);
+  const counts = { liquids: 0, liquids1: 0 };
+  for (const line of entries) {
+    const bucket = priceBucket(line.product.category);
+    if (bucket) counts[bucket] += line.qty;
+  }
   let cents = 0;
   const lines = entries.map((line) => {
-    const unitPrice = isPlainLiquid(line.product.category) && liquidsUnit != null ? liquidsUnit : line.variant.price;
+    const bucket = priceBucket(line.product.category);
+    const unitPrice = bucket ? lineUnit(line.product.category, line.variant.price, counts[bucket]) : line.variant.price;
     cents += Math.round(unitPrice * 100) * line.qty;
     return { ...line, unitPrice, total: (Math.round(unitPrice * 100) * line.qty) / 100 };
   });
@@ -328,13 +331,6 @@ export function priceCart(cart: Record<string, number>) {
 
 export function cartMoney(cart: Record<string, number>) {
   return priceCart(cart).total;
-}
-
-export function applyLoyalty(amount: number, percent: number) {
-  const level = Number(percent);
-  if (!Number.isFinite(level) || level <= 0 || amount <= 0) return { discount: 0, total: amount };
-  const discount = Math.round(amount * level) / 100;
-  return { discount, total: Math.max(0, Math.round((amount - discount) * 100) / 100) };
 }
 
 export function sanitizeCart(value: unknown): { cart: Record<string, number>; dropped: boolean } {

@@ -33,6 +33,11 @@ function unitPriceAtQuantity(quantity, prices) {
   return unitPrice;
 }
 
+export const shelfPrices = {
+  liquids: { 1: 18, 2: 16, 3: 14 },
+  liquids1: { 1: 20, 2: 18, 3: 17, 5: 15 },
+};
+
 export function liquidTierMap(rules) {
   const liquids = {};
   for (const rule of rules || []) {
@@ -110,12 +115,6 @@ export function priceOrder(items, liquidPrices, promoCode, user, promos) {
   if (!promo.valid) return { ok: false, error: promo.message || "INVALID_PROMO" };
   discount += promo.discount;
   amount = Math.max(0, amount - promo.discount);
-  const level = Number(user?.level_percent || 0);
-  if (level > 0) {
-    const levelDiscount = Math.round(amount * level) / 100;
-    discount += levelDiscount;
-    amount = Math.max(0, amount - levelDiscount);
-  }
   let usedDeferred = 0;
   const deferred = Number(user?.deferred_discount || 0);
   if (deferred > 0 && amount > 0) {

@@ -270,7 +270,7 @@ await call("/api/courier/orders/status", {
   token: frost.data.token,
   body: { city: "one", orderId: bonusOrder.data.orderId, status: "cancelled", reason: "Откат бонусов" },
 });
-record("bonus", "Отмена откатывает списанные бонусы, кэшбэк и реферальное начисление", paid.data.bonusApplied === 4.22 && paid.data.finalAmount === 4.22 && afterPay === 36.2 && afterReferral === 20 && conversions === 2 && buyer.bonus_balance === 40 && referrer.bonus_balance === 0 && referrer.referral_conversions === 1 && buyer.first_paid_order_at === "" && courierUser.bonus_balance === 0, `оплата бонус ${paid.data.bonusApplied}, баланс ${afterPay}→${buyer.bonus_balance}, реферер ${afterReferral}→${referrer.bonus_balance}`);
+record("bonus", "Отмена откатывает списанные бонусы, кэшбэк и реферальное начисление", paid.data.bonusApplied === 4.45 && paid.data.finalAmount === 4.45 && afterPay === 36 && afterReferral === 20 && conversions === 2 && buyer.bonus_balance === 40 && referrer.bonus_balance === 0 && referrer.referral_conversions === 1 && buyer.first_paid_order_at === "" && courierUser.bonus_balance === 0, `оплата бонус ${paid.data.bonusApplied}, баланс ${afterPay}→${buyer.bonus_balance}, реферер ${afterReferral}→${referrer.bonus_balance}`);
 
 const chain = await call("/api/order/create", {
   method: "POST",
@@ -287,7 +287,7 @@ const chainDeliver = await call("/api/courier/orders/status", {
   token: north.data.token,
   body: { city: "one", orderId: chain.data.orderId, status: "delivered" },
 });
-record("N", "Рабочая цепочка без регрессии", chain.data.totalAmount === 8.07 && chainConfirm.data.status === "pending" && stock("clear:10") === chainStock - 1 && chainPay.data.finalAmount === 8.07 && own.data.orders.some((item) => item.orderId === chain.data.orderId) && !foreign.data.orders.some((item) => item.orderId === chain.data.orderId) && chainDeliver.data.status === "delivered" && stock("clear:10") === chainStock - 1, `сумма ${chain.data.totalAmount}, склад ${chainStock}→${stock("clear:10")}`);
+record("N", "Рабочая цепочка без регрессии", chain.data.totalAmount === 8.5 && chainConfirm.data.status === "pending" && stock("clear:10") === chainStock - 1 && chainPay.data.finalAmount === 8.5 && own.data.orders.some((item) => item.orderId === chain.data.orderId) && !foreign.data.orders.some((item) => item.orderId === chain.data.orderId) && chainDeliver.data.status === "delivered" && stock("clear:10") === chainStock - 1, `сумма ${chain.data.totalAmount}, склад ${chainStock}→${stock("clear:10")}`);
 
 resumeStockMoves();
 record("L2", "Повторное восстановление в том же процессе не возвращает остаток второй раз", stock("sapphire:10") === beforeCrash + 1 && db().orders[crashOrder.data.orderId].status === "cancelled", `склад ${stock("sapphire:10")}, статус ${db().orders[crashOrder.data.orderId].status}`);

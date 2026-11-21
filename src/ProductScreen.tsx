@@ -13,7 +13,7 @@ import {
   euro,
   cartEntries,
   findProduct,
-  liquidUnitAt,
+  lineUnit,
   lineKey,
   products,
   type Variant,
@@ -111,9 +111,9 @@ export function ProductScreen({
   const inCart = variant ? cart[lineKey(product.id, variant.id)] ?? 0 : 0;
   const remaining = variant ? Math.max(0, variant.stock - inCart) : 0;
   const blocked = !variant || variant.availability === "out" || remaining <= 0;
-  const liquidsInCart = cartEntries(cart).reduce((sum, line) => sum + (line.product.category.trim().toLowerCase() === "liquids" ? line.qty : 0), 0);
-  const liquidsUnit = current.category.trim().toLowerCase() === "liquids" ? liquidUnitAt(liquidsInCart + qty) : null;
-  const total = variant ? (liquidsUnit ?? variant.price) * qty : 0;
+  const bucket = current.category.trim().toLowerCase();
+  const bucketInCart = cartEntries(cart).reduce((sum, line) => sum + (line.product.category.trim().toLowerCase() === bucket ? line.qty : 0), 0);
+  const total = variant ? lineUnit(current.category, variant.price, bucketInCart + qty) * qty : 0;
 
   function choose(next: Variant) {
     if (next.availability === "out" || next.stock <= 0) return;

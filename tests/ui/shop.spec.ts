@@ -356,7 +356,7 @@ test("вкусы одной жидкости собраны в одну карт
   await expect(page.locator(".product-page .hero-scene img")).toHaveAttribute("src", "/assets/products/liquids/chaser-fp-barberry.png");
 });
 
-test("количество меняет цену только у категории liquids", async ({ page }) => {
+test("количество меняет цену жидкостей и Chaser отдельно", async ({ page }) => {
   await page.route("**/api/config", async (route) => {
     const response = await route.fetch();
     const json = await response.json();
@@ -390,13 +390,13 @@ test("количество меняет цену только у категор�
   await card("CHASER LUX 50MG").locator("h3").click();
   await page.locator(".product-page").getByRole("button", { name: "Больше" }).click();
   await page.locator(".product-page").getByRole("button", { name: "Больше" }).click();
-  await expect(page.locator(".product-page").getByRole("button", { name: /В корзину/ })).toContainText("60,00");
+  await expect(page.locator(".product-page").getByRole("button", { name: /В корзину/ })).toContainText("51,00");
   await page.locator(".product-page").getByRole("button", { name: /В корзину/ }).click();
   await page.getByRole("button", { name: "Корзина" }).click();
-  await expect(page.locator(".cart-bar")).toContainText("92,00");
+  await expect(page.locator(".cart-bar")).toContainText("83,00");
 });
 
-test("скидка повторной покупки снимается после цены liquids", async ({ page }) => {
+test("повторная покупка не даёт процентную скидку", async ({ page }) => {
   await page.route("**/api/config", async (route) => {
     const response = await route.fetch();
     const json = await response.json();
@@ -423,8 +423,9 @@ test("скидка повторной покупки снимается посл
   await page.locator(".product-page").getByRole("button", { name: "Больше" }).click();
   await page.locator(".product-page").getByRole("button", { name: /В корзину/ }).click();
   await page.getByRole("button", { name: "Корзина" }).click();
-  await expect(page.locator(".cart-bar")).toContainText("Скидка 5%");
-  await expect(page.locator(".cart-bar")).toContainText("30,40");
+  await expect(page.locator(".cart-bar")).not.toContainText("Скидка");
+  await expect(page.locator(".cart-bar")).toContainText("32,00");
+  await expect(page.locator(".cart-bar")).not.toContainText("30,40");
 });
 
 test("характеристики на 320 не остаются под кнопкой", async ({ page }) => {

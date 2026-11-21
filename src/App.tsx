@@ -16,7 +16,7 @@ import { CountBump } from "./CountBump";
 import { ProductScreen } from "./ProductScreen";
 import { catalogIdentity, lineTitle } from "./catalogLine";
 import { mediaByBrand, mediaBySku } from "./productMedia";
-import { CART_KEY, clampLineQty, defaultVariant, euro, findProduct, lineKey, products, readLooseCart, sanitizeCart, setLiquidTiers, setSheetCatalog, type Availability, type Product, type Variant } from "./products";
+import { CART_KEY, clampLineQty, defaultVariant, euro, findProduct, lineKey, products, readLooseCart, sanitizeCart, setShelfPrices, setSheetCatalog, type Availability, type Product, type Variant } from "./products";
 import { sectionItem, sectionList, tapSpring } from "./motion";
 import { prewarmImages } from "./ImagePreloader";
 import { languageName, languages, useI18n, type Lang } from "./i18n";
@@ -155,7 +155,6 @@ export function App() {
   const [botUrl, setBotUrl] = useState<string | null>(null);
   const [shopCity, setShopCity] = useState("HH");
   const [couriers, setCouriers] = useState<ApiCourier[]>([]);
-  const [loyaltyPercent, setLoyaltyPercent] = useState(0);
   const [catalogMode, setCatalogMode] = useState<"loading" | "demo" | "live" | "error">("loading");
   const [liveProducts, setLiveProducts] = useState<Product[]>([]);
   const [bootNonce, setBootNonce] = useState(0);
@@ -241,7 +240,7 @@ export function App() {
         setBotUrl(telegramBotLink(config.botUsername));
         if (config.catalog === "demo") {
           setSheetCatalog([]);
-          setLiquidTiers(null);
+          setShelfPrices(false);
           settleCart();
           setCatalogMode("demo");
         } else setCatalogMode("loading");
@@ -322,24 +321,6 @@ export function App() {
   }, [session]);
 
   useEffect(() => {
-    if (!session?.token) {
-      setLoyaltyPercent(0);
-      return;
-    }
-    let alive = true;
-    api<{ loyalty?: { percent?: number } }>(`/api/order/history?city=${encodeURIComponent(session.city)}`, { token: session.token })
-      .then((data) => {
-        if (alive) setLoyaltyPercent(Number(data.loyalty?.percent) || 0);
-      })
-      .catch(() => {
-        if (alive) setLoyaltyPercent(0);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [session?.token, session?.city]);
-
-  useEffect(() => {
     if (!configReady || catalogMode === "error") return;
     let alive = true;
     if (catalogMode === "loading") {
@@ -347,20 +328,20 @@ export function App() {
         .then((data) => {
           if (!alive) return;
           if (data.source !== "sheets" || !Array.isArray(data.products)) {
-            setLiquidTiers(null);
+            setShelfPrices(false);
             setCatalogMode("error");
             return;
           }
           const grouped = groupSheetRows(data.products);
           setSheetCatalog(grouped);
-          setLiquidTiers(data.liquidPrices);
+          setShelfPrices(true);
           setLiveProducts(grouped);
           settleCart();
           setCatalogMode("live");
         })
         .catch(() => {
           if (alive) {
-            setLiquidTiers(null);
+            setShelfPrices(false);
             setCatalogMode("error");
           }
         });
@@ -575,7 +556,6 @@ export function App() {
                   onOpen={openProduct}
                   onCatalog={() => showScreen("catalog")}
                   onContinue={() => { setCheckoutHeld(true); setCheckoutOpen(true); }}
-                  loyaltyPercent={loyaltyPercent}
                 />
               </section>
             ) : null}
@@ -684,7 +664,6 @@ export function App() {
               onOrders={() => showScreen("orders")}
               onClose={() => setCheckoutOpen(false)}
               authFailed={Boolean(authError)}
-              loyaltyPercent={loyaltyPercent}
             />
           </div>
         </div>

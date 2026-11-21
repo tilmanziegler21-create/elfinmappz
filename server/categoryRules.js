@@ -11,7 +11,8 @@ export function sectionLabel(category) {
 
 export function brandGroup(brand) {
   const value = String(brand || "").trim().toUpperCase().replace(/\s+/g, " ");
-  if (value === "HQD" || value === "ELFLIQ" || value === "VOZOL") return value;
+  if (value === "HQD" || value === "ELFLIQ" || value === "VOZOL" || value === "PUFFY") return value;
+  if (value.startsWith("PUFFY ") || value.startsWith("PUFFY-")) return "PUFFY";
   if (value === "CHASER" || value.startsWith("CHASER ") || value.startsWith("CHASER-")) return "CHASER";
   return "";
 }

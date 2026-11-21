@@ -31,6 +31,7 @@ export function mediaBySku(sku: string): MediaEntry | null {
 }
 
 const brandMedia: Array<{ test: (brand: string) => boolean; id: string }> = [
+  { test: (brand) => brand === "PUFFY" || brand.startsWith("PUFFY "), id: "puffy-berry-cherry" },
   { test: (brand) => brand.startsWith("ELFLIQ"), id: "elfliq-watermelon" },
   { test: (brand) => brand.includes("SQUID"), id: "chaser-squid-game" },
   { test: (brand) => brand.includes("F/P") || brand.includes(" FP") || brand.endsWith(" FP"), id: "chaser-fp-barberry" },

@@ -1,4 +1,12 @@
 {
+  "puffy-berry-cherry": {
+    "sku": "",
+    "image": "/assets/products/liquids/puffy-berry-cherry.png",
+    "imageType": "transparent",
+    "scene": "liquid-float",
+    "accent": "grape",
+    "category": "liquids"
+  },
   "elfliq-watermelon": {
     "sku": "",
     "image": "/products/elfliq-watermelon.png",

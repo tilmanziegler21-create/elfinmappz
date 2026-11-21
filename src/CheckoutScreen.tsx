@@ -5,7 +5,7 @@ import { EmptyState } from "./EmptyState";
 import { api, todayDate, type ApiCourier, type AuthPhase, type SessionUser } from "./api";
 import { courierChatLink } from "./telegram";
 import { cartTitle, orderNumber } from "./lineLabel";
-import { applyLoyalty, priceCart, euro } from "./products";
+import { priceCart, euro } from "./products";
 import { tapSpring } from "./motion";
 import { moneyLocale, useI18n } from "./i18n";
 
@@ -25,7 +25,6 @@ export function CheckoutScreen({
   onOrders,
   onClose,
   authFailed = false,
-  loyaltyPercent = 0,
 }: {
   cart: Record<string, number>;
   token: string;
@@ -42,15 +41,13 @@ export function CheckoutScreen({
   onOrders: () => void;
   onClose?: () => void;
   authFailed?: boolean;
-  loyaltyPercent?: number;
 }) {
   const reduce = useReducedMotion();
   const { t, lang } = useI18n();
   const money = moneyLocale(lang);
   const priced = priceCart(cart);
   const lines = priced.lines;
-  const loyalty = applyLoyalty(priced.total, loyaltyPercent);
-  const total = loyalty.total;
+  const total = priced.total;
   const idempotencyKey = useRef(`checkout-${crypto.randomUUID()}`);
   const createdId = useRef<string | null>(null);
   const confirmed = useRef(false);
@@ -301,12 +298,6 @@ export function CheckoutScreen({
         <div className="order-sum">
           <span>{t("checkout.goods")}</span>
           <strong>{euro(priced.total, money)}</strong>
-          {loyalty.discount > 0 ? (
-            <>
-              <span>{t("cart.discount", { percent: loyaltyPercent })}</span>
-              <strong>{euro(loyalty.discount, money)}</strong>
-            </>
-          ) : null}
           <span>{t("checkout.fulfillment")}</span>
           <strong>{fulfillment === "pickup" ? t("checkout.pickup") : t("checkout.delivery")}</strong>
           <span className="is-total">{t("cart.total")}</span>
