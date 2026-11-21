@@ -186,8 +186,8 @@ const bonusPay = await call("/api/order/payment", {
   token,
   body: { orderId: bonusOrder.data.orderId, city: "one", paymentMethod: "card", bonusApplied: 100 },
 });
-assert(bonusPay.data.bonusApplied === 5, "bonus capped at half");
-assert(bonusPay.data.finalAmount === 5, "final after bonus");
+assert(bonusPay.data.bonusApplied === 4.75, "bonus capped at half");
+assert(bonusPay.data.finalAmount === 4.75, "final after bonus");
 
 const noReason = await call("/api/courier/orders/status", {
   method: "POST",

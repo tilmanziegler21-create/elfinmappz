@@ -731,7 +731,8 @@ function confirmPayload(order, courier) {
 async function applyConfirm(order, next, data, courier, requestId) {
   if (order.delivery_locked) {
     if (!sameMeeting(order, next)) return { status: 409, payload: { error: "CONFIRM_CONFLICT" } };
-    if (!order.telegram_sent) {
+    if (!order.courier_notified_at) {
+      order.courier_notified_at = new Date().toISOString();
       const notice = await recordCourierNotice(requestId, order, courier);
       order.telegram_sent = Boolean(notice?.sent);
     }
