@@ -6,12 +6,14 @@ export function priceCategory(category: string) {
 
 export function sectionLabel(category: string) {
   if (priceCategory(category)) return "Жидкости";
+  if (String(category || "").trim().toLowerCase() === "sets") return "Наборы";
   return category;
 }
 
 export function shopSection(category: string) {
   if (priceCategory(category)) return "Жидкости";
   const value = category.trim().toLowerCase();
+  if (value === "sets") return "Наборы";
   if (value === "pod" || value === "pods") return "POD";
   if (value === "electronics" || value === "devices" || value === "device") return "Устройства";
   return "";

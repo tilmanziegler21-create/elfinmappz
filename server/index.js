@@ -27,6 +27,7 @@ import {
 import { clearHamburgCache, readHamburgSources } from "./hhRead.js";
 import { hhTabReport, listSheetTitles, loadServiceAccount, sheetCode, sheetTabs, spreadsheetMeta } from "./sheetsRead.js";
 import { withMedia } from "./productMedia.js";
+import { allocateSet, setAvailable, setRecipe } from "./sets.js";
 import { bindNoticeRecipient, enqueueNotice, telegramTestMode, trySendNotice } from "./notices.js";
 import { allocateDisplayNumbers } from "./pgState.js";
 import { customerHandle, formatLine, orderNumber } from "./lineLabel.js";
@@ -128,11 +129,71 @@ function withPuffy(products) {
   return [...rows, puffyRow];
 }
 
+const setOffer = [
+  ["1", "2 картриджа + 1 жидкость", 25, 30],
+  ["2", "4 картриджа + 2 жидкости", 45, 56],
+  ["3", "1 устройство + 2 жидкости", 50, 62],
+  ["4", "1 устройство + 2 жидкости + 2 картриджа", 60, 76],
+  ["5", "1 устройство + 4 жидкости", 70, 94],
+  ["6", "1 устройство + 4 жидкости + 4 картриджа", 90, 118],
+];
+
+function outsideHold(sku) {
+  if (workbook().products.some((row) => row.sku === sku)) return 0;
+  let qty = 0;
+  for (const move of db().stockMoves) {
+    if (move.status !== "applied" && move.status !== "done") continue;
+    const line = (move.lines || []).reduce((sum, item) => (item.sku === sku ? sum + Number(item.qty) : sum), 0);
+    if (move.type === "commit") qty += line;
+    if (move.type === "return") qty -= line;
+  }
+  return Math.max(0, qty);
+}
+
+function partFree(rows, sku) {
+  const row = rows.find((item) => item.sku === sku);
+  const reserved = activeReservations(sku).reduce((sum, item) => sum + Number(item.qty), 0);
+  return Math.max(0, Number(row?.stock || 0) - reserved - outsideHold(sku));
+}
+
+function shownStock(raw, products) {
+  return products.map((row) => {
+    if (setRecipe(row.sku)) return row;
+    const stock = partFree(raw, row.sku);
+    return { ...row, stock, active: stock > 0 && row.active !== false };
+  });
+}
+
+function withSets(products) {
+  const rows = products || [];
+  if (rows.some((item) => String(item.brand || "").toUpperCase().includes("НАБОР"))) return rows;
+  const freeOf = (sku) => partFree(rows, sku);
+  const setRows = setOffer.map(([number, name, price, oldPrice]) => {
+    const sku = `SET-${number}`;
+    const stock = setAvailable(sku, rows, freeOf);
+    return {
+      id: sku,
+      sku,
+      name,
+      flavor: name,
+      category: "sets",
+      brand: `НАБОР №${number}`,
+      price,
+      oldPrice,
+      stock,
+      active: true,
+      image: `/assets/products/sets/set-${number}.jpg`,
+    };
+  });
+  return [...setRows, ...rows];
+}
+
 async function shopCatalog() {
   if (useLocalCatalog()) return { products: workbook().products, couriers: workbook().couriers };
   try {
     const data = await readHamburgSources();
-    return { ...data, products: withPuffy(data.products) };
+    const raw = withPuffy(data.products);
+    return { ...data, products: withSets(raw) };
   } catch (error) {
     if (process.env.NODE_ENV === "production") throw error;
     return { products: workbook().products, couriers: workbook().couriers };
@@ -586,7 +647,12 @@ async function notifyCourier(order, courier = courierById(order.courier_id), req
 }
 
 function linesOf(orderId) {
-  return orderItems(orderId).map((item) => ({ sku: item.productId, qty: Number(item.quantity) }));
+  return orderItems(orderId).flatMap((item) => {
+    if (Array.isArray(item.components) && item.components.length) {
+      return item.components.map((part) => ({ sku: part.sku, qty: Number(part.qty) }));
+    }
+    return [{ sku: item.productId, qty: Number(item.quantity) }];
+  });
 }
 
 function sameMeeting(order, next) {
@@ -609,15 +675,7 @@ function commitStock(order) {
   }
   if (move.status !== "pending") return;
   const localLines = move.lines.filter((line) => workbook().products.some((row) => row.sku === line.sku));
-  if (localLines.length === 0) {
-    move.status = "applied";
-    order.stock_committed = true;
-    releaseReservations(order.id);
-    persist();
-    return;
-  }
-  move.lines = localLines;
-  adjustStock(move.lines, -1);
+  if (localLines.length) adjustStock(localLines, -1);
   move.status = "applied";
   order.stock_committed = true;
   releaseReservations(order.id);
@@ -1018,7 +1076,8 @@ app.get("/api/catalog", async (req, res) => {
   if (useLocalCatalog()) return res.json({ source: "demo", city, products: localProducts() });
   try {
     const data = await readHamburgSources();
-    res.json({ source: "sheets", city: "HH", products: withPuffy(data.products).map(withMedia), liquidPrices: liquidTierMap(data.prices?.rules) });
+    const raw = withPuffy(data.products);
+    res.json({ source: "sheets", city: "HH", products: shownStock(raw, withSets(raw)).map(withMedia), liquidPrices: liquidTierMap(data.prices?.rules) });
   } catch (error) {
     const failure = sheetsFailure(error);
     res.status(failure.status).json(failure.body);
@@ -1112,20 +1171,35 @@ app.post("/api/order/create", beginOrderTrace, refuseEphemeralOrders, requireAut
     return res.status(failure.status).json(failure.body);
   }
   const normalized = [];
+  const claimed = new Map();
+  const stockRows = catalog.products.filter((row) => !setRecipe(row.sku));
+  const freeOf = (sku) => partFree(stockRows, sku) - (claimed.get(sku) || 0);
   for (const item of items) {
     const sku = String(item.productId || "");
     const qty = Number(item.quantity);
     const product = catalog.products.find((row) => row.sku === sku);
-    if (!product || !product.active) {
+    if (!product || product.active === false) {
       if (key) delete db().orderIdempotency[key];
       mark(req, "ORDER_VALIDATED", "PRODUCT_NOT_FOUND");
       return res.status(404).json({ error: `Product not found: ${sku}` });
     }
-    const reserved = activeReservations(sku).reduce((sum, row) => sum + row.qty, 0);
-    if (Number(product.stock) - reserved < qty || qty < 1) {
-      if (key) delete db().orderIdempotency[key];
-      mark(req, "ORDER_VALIDATED", "INSUFFICIENT_STOCK");
-      return res.status(409).json({ error: `Insufficient stock for ${sku}` });
+    let components = null;
+    if (setRecipe(sku)) {
+      const allocation = allocateSet(sku, qty, stockRows, freeOf);
+      if (!allocation.ok) {
+        if (key) delete db().orderIdempotency[key];
+        mark(req, "ORDER_VALIDATED", "INSUFFICIENT_STOCK");
+        return res.status(409).json({ error: `Insufficient stock for ${sku}` });
+      }
+      components = allocation.lines;
+      for (const part of components) claimed.set(part.sku, (claimed.get(part.sku) || 0) + part.qty);
+    } else {
+      if (freeOf(sku) < qty || qty < 1) {
+        if (key) delete db().orderIdempotency[key];
+        mark(req, "ORDER_VALIDATED", "INSUFFICIENT_STOCK");
+        return res.status(409).json({ error: `Insufficient stock for ${sku}` });
+      }
+      claimed.set(sku, (claimed.get(sku) || 0) + qty);
     }
     const brand = String(product.brand || "").trim();
     const flavor = String(product.name || "").trim();
@@ -1139,6 +1213,7 @@ app.post("/api/order/create", beginOrderTrace, refuseEphemeralOrders, requireAut
       brand,
       category: product.category,
       variant,
+      ...(components ? { components } : {}),
     });
   }
 
@@ -1193,7 +1268,11 @@ app.post("/api/order/create", beginOrderTrace, refuseEphemeralOrders, requireAut
   db().orders[orderId] = order;
   for (const item of normalized) {
     db().items.push({ order_id: orderId, ...item });
-    addReservation(orderId, item.productId, item.quantity, RESERVATION_TTL_MS);
+    if (item.components?.length) {
+      for (const part of item.components) addReservation(orderId, part.sku, part.qty, RESERVATION_TTL_MS);
+    } else {
+      addReservation(orderId, item.productId, item.quantity, RESERVATION_TTL_MS);
+    }
   }
   mark(req, "RESERVATION_CREATED", "ok");
   upsertOrderRow(blankOrderRow({

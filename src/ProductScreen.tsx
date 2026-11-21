@@ -14,7 +14,9 @@ import {
   cartEntries,
   findProduct,
   lineUnit,
+  quantityOffer,
   lineKey,
+  stockLine,
   products,
   type Variant,
 } from "./products";
@@ -26,12 +28,14 @@ type AddResult = "added" | "limit" | "unavailable";
 
 export function ProductScreen({
   productId,
+  startQty = 1,
   cart,
   onBack,
   onAdd,
   onCart,
 }: {
   productId: string;
+  startQty?: number;
   cart: Record<string, number>;
   onBack: () => void;
   onAdd: (productId: string, qty: number, variantId: string) => AddResult;
@@ -45,6 +49,7 @@ export function ProductScreen({
   const money = moneyLocale(lang);
   const [note, setNote] = useState<"added" | "limit" | "out" | null>(null);
   const [sheet, setSheet] = useState(false);
+  const [dealNote, setDealNote] = useState(false);
   const [saved, setSaved] = useState(readSaved);
   const lite = liteMotion();
 
@@ -54,11 +59,13 @@ export function ProductScreen({
 
   useEffect(() => {
     const next = findProduct(productId);
+    const stock = next ? defaultVariant(next)?.stock ?? 1 : 1;
     setVariantId(next ? defaultVariant(next)?.id ?? null : null);
-    setQty(1);
+    setQty(Math.max(1, Math.min(startQty, Math.max(stock, 1))));
     setNote(null);
     setSheet(false);
-  }, [productId]);
+    setDealNote(false);
+  }, [productId, startQty]);
 
   useEffect(() => {
     if (!note) return;
@@ -114,6 +121,11 @@ export function ProductScreen({
   const bucket = current.category.trim().toLowerCase();
   const bucketInCart = cartEntries(cart).reduce((sum, line) => sum + (line.product.category.trim().toLowerCase() === bucket ? line.qty : 0), 0);
   const total = variant ? lineUnit(current.category, variant.price, bucketInCart + qty) * qty : 0;
+  const offer = current.preview ? null : quantityOffer(current.category);
+  const pricedSteps = offer?.steps.filter((step) => !step.talk) ?? [];
+  const activeQty = pricedSteps.reduce((mark, step) => (bucketInCart + qty >= step.qty ? step.qty : mark), pricedSteps[0]?.qty ?? 0);
+  const full = offer ? offer.base * qty : total;
+  const save = offer ? Math.max(0, Math.round((full - total) * 100) / 100) : 0;
 
   function choose(next: Variant) {
     if (next.availability === "out" || next.stock <= 0) return;
@@ -164,6 +176,7 @@ export function ProductScreen({
               type="button"
               className={saved.includes(current.id) ? "save-btn is-on" : "save-btn"}
               aria-pressed={saved.includes(current.id)}
+              aria-label={saved.includes(current.id) ? t("product.saved") : t("product.save")}
               onClick={() => {
                 const next = saved.includes(current.id)
                   ? saved.filter((id) => id !== current.id)
@@ -172,15 +185,49 @@ export function ProductScreen({
                 writeSaved(next);
               }}
             >
-              {saved.includes(current.id) ? t("product.saved") : t("product.save")}
+              <svg viewBox="0 0 24 24" aria-hidden="true" fill={saved.includes(current.id) ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.7">
+                <path d="M12 19.2 5.4 12.8a3.8 3.8 0 0 1 5.4-5.4L12 8.6l1.2-1.2a3.8 3.8 0 0 1 5.4 5.4Z" />
+              </svg>
             </button>
           </div>
           <p className="product-price product-price-lg">
-            {current.preview ? <strong>—</strong> : variant ? <strong>{euro(variant.price, money)}</strong> : <strong>{euro(current.price, money)}</strong>}
-            {!current.preview && variant?.oldPrice ? <s>{euro(variant.oldPrice, money)}</s> : null}
+            {current.preview ? <strong>—</strong> : offer ? <strong>{t("product.from", { sum: euro(offer.base, money) })}</strong> : variant ? <strong>{euro(variant.price, money)}</strong> : <strong>{euro(current.price, money)}</strong>}
+            {!current.preview && !offer && variant?.oldPrice ? <s>{euro(variant.oldPrice, money)}</s> : null}
           </p>
-          <p className={current.preview ? "stock" : `stock stock-${variant?.availability ?? "out"}`}>
-            {current.preview ? t("product.sample") : t(`stock.${variant?.availability ?? "out"}`)}
+          {offer ? (
+            <section className="qty-deal" aria-label={t("product.qtyDeal")}>
+              <div className="qty-deal-head">
+                <span className="qty-deal-mark" aria-hidden="true">%</span>
+                <strong>{t("product.qtyDeal")}</strong>
+                <button type="button" className="qty-deal-info" aria-expanded={dealNote} aria-label={t("product.qtyAbout")} onClick={() => setDealNote((value) => !value)}>i</button>
+              </div>
+              {dealNote ? <p className="qty-deal-note">{offer.steps.some((step) => step.talk) ? t("product.qtyInfo") : t("product.qtyInfoPack")}</p> : null}
+              <div className="qty-deal-grid">
+                {offer.steps.map((step) => step.talk ? (
+                  <div key={step.qty} className="qty-step is-talk">
+                    <span>{t("product.qtyFive")}</span>
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.2 11.2a2.2 2.2 0 1 0-2.2-2.2 2.2 2.2 0 0 0 2.2 2.2Zm7.6 1a1.8 1.8 0 1 0-1.8-1.8 1.8 1.8 0 0 0 1.8 1.8ZM4.2 18.5v-1.1a2.6 2.6 0 0 1 2.6-2.6h2.8a2.6 2.6 0 0 1 2.6 2.6v1.1M13 18.5v-.8a2.2 2.2 0 0 1 2.2-2.2h1.6a2.2 2.2 0 0 1 2.2 2.2v.8" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
+                    <b>{t("product.qtyTalk")}</b>
+                  </div>
+                ) : (
+                  <button
+                    key={step.qty}
+                    type="button"
+                    className={step.qty === activeQty ? "qty-step is-on" : "qty-step"}
+                    disabled={blocked || remaining < step.qty}
+                    onClick={() => setQty(step.qty)}
+                  >
+                    {step.percent > 0 ? <em>−{step.percent}%</em> : null}
+                    <span>{step.qty === 5 ? t("product.qtyFive") : t("product.qtyPiece", { count: step.qty })}</span>
+                    <b>{euro(step.total, money)}</b>
+                    {step.save > 0 ? <s>{euro(step.full, money)}</s> : null}
+                  </button>
+                ))}
+              </div>
+            </section>
+          ) : null}
+          <p className={current.preview ? "stock" : `stock stock-${remaining <= 0 ? "out" : remaining <= 2 ? "low" : "in"}`}>
+            {current.preview ? t("product.sample") : stockLine(t, remaining <= 0 ? "out" : remaining <= 2 ? "low" : "in", remaining)}
           </p>
           <button type="button" className="variant-trigger" aria-label={flavorChoice ? t("product.chooseFlavor") : t("product.chooseVolume")} onClick={() => setSheet(true)}>
             <span>{variant?.label ?? t("product.choose")}</span>
@@ -234,7 +281,8 @@ export function ProductScreen({
           transition={note === "added" ? addPulse : tapSpring}
           onClick={add}
         >
-          {note === "added" ? t("product.added") : current.preview ? t("product.noPrice") : blocked ? t("product.out") : t("product.buy", { sum: euro(total, money) })}
+          <span>{note === "added" ? t("product.added") : current.preview ? t("product.noPrice") : blocked ? t("product.out") : t("product.buy", { sum: euro(total, money) })}</span>
+          {note !== "added" && save > 0 ? <em className="buy-save">{t("product.qtySave", { sum: euro(save, money) })}</em> : null}
         </motion.button>
         <p className="product-note" role="status">{note === "added" ? t("product.addedNote") : note === "limit" ? t("product.limit") : note === "out" ? t("product.out") : ""}</p>
       </div>

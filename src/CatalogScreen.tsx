@@ -5,17 +5,18 @@ import { preloadImages } from "./ImagePreloader";
 import { productTap } from "./productMotion";
 import { lineTitle } from "./catalogLine";
 import { brandFilters, brandGroup, shopSection } from "./categoryRules";
-import { euro, products, unitsFor, type Product } from "./products";
+import { euro, products, stockLine, unitsFor, type Product } from "./products";
 import { cardItem, cardList, tapSpring } from "./motion";
 import { readSaved, SAVED_EVENT, writeSaved } from "./saved";
 import { useI18n } from "./i18n";
 
-const sections = ["Все", "Жидкости", "POD", "Устройства"] as const;
+const sections = ["Все", "Жидкости", "Наборы", "POD", "Устройства"] as const;
 
 function sectionName(item: string, t: (key: string) => string) {
   if (item === "Все") return t("catalog.all");
   if (item === "Жидкости") return t("catalog.liquids");
   if (item === "Устройства") return t("catalog.devices");
+  if (item === "Наборы") return t("catalog.sets");
   return item;
 }
 const FILTER_KEY = "elfin-catalog-ui";
@@ -279,6 +280,7 @@ function ProductGrid({
             key={item.id}
             className="product"
             data-card="catalog"
+            data-kind={shopSection(item.category) === "Наборы" ? "set" : undefined}
             variants={cardItem}
             whileTap={reduce ? undefined : productTap}
             onClick={() => onOpen(item.id)}
@@ -305,8 +307,9 @@ function ProductGrid({
             <p className="product-flavor">{item.flavor}</p>
             <p className="product-price">
               <strong>{demo ? "—" : euro(item.price)}</strong>
+              {!demo && item.oldPrice ? <s>{euro(item.oldPrice)}</s> : null}
             </p>
-            <p className={demo ? "stock" : `stock stock-${item.availability}`}>{demo ? t("catalog.demo") : t(`stock.${item.availability}`)}</p>
+            <p className={demo ? "stock" : `stock stock-${item.availability}`}>{demo ? t("catalog.demo") : stockLine(t, item.availability, item.variants.reduce((sum, variant) => sum + variant.stock, 0))}</p>
             <motion.button
               type="button"
               className="btn btn-primary product-cta"

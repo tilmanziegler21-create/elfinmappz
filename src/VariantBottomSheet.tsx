@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { euro, type Variant } from "./products";
+import { euro, stockLine, type Variant } from "./products";
 import { moneyLocale, useI18n } from "./i18n";
 import { variantSheetMove } from "./productMotion";
 
@@ -115,7 +115,7 @@ export function VariantBottomSheet({
                   >
                     <span>{item.label}</span>
                     <strong>{hideCommerce ? "—" : euro(item.price, money)}</strong>
-                    <em>{hideCommerce ? "—" : closed ? t("stock.out") : `${t(`stock.${item.availability}`)} · ${item.stock}`}</em>
+                    <em>{hideCommerce ? "—" : stockLine(t, closed ? "out" : item.availability, item.stock)}</em>
                   </button>
                 );
               })}

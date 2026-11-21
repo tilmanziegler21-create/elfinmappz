@@ -16,7 +16,7 @@ import { CountBump } from "./CountBump";
 import { ProductScreen } from "./ProductScreen";
 import { catalogIdentity, lineTitle } from "./catalogLine";
 import { mediaByBrand, mediaBySku } from "./productMedia";
-import { CART_KEY, clampLineQty, defaultVariant, euro, findProduct, lineKey, products, readLooseCart, sanitizeCart, setShelfPrices, setSheetCatalog, type Availability, type Product, type Variant } from "./products";
+import { CART_KEY, clampLineQty, defaultVariant, euro, findProduct, lineKey, products, quantityOffer, readLooseCart, sanitizeCart, setShelfPrices, setSheetCatalog, type Availability, type Product, type Variant } from "./products";
 import { sectionItem, sectionList, tapSpring } from "./motion";
 import { prewarmImages } from "./ImagePreloader";
 import { languageName, languages, useI18n, type Lang } from "./i18n";
@@ -43,6 +43,7 @@ type SheetRow = {
   category: string;
   brand: string;
   price: number;
+  oldPrice?: number;
   stock: number;
   active: boolean;
   image?: string;
@@ -71,12 +72,14 @@ function productFromRows(items: SheetRow[], name: string, image?: string, id?: s
       id: row.sku || flavor,
       label: repeated ? `${flavor} · ${row.brand}` : flavor,
       price: row.price,
+      oldPrice: row.oldPrice,
       availability,
       stock: closed ? 0 : row.stock,
     };
   }).sort((a, b) => a.label.localeCompare(b.label, "ru"));
   const open = variants.find((item) => item.availability !== "out" && item.stock > 0);
-  const stock = variants.reduce((sum, item) => sum + item.stock, 0);
+  const selling = variants.filter((item) => item.stock > 0);
+  const stock = selling.reduce((sum, item) => sum + item.stock, 0);
   const identity = catalogIdentity(items[0].brand || "");
   return {
     id: id || productSlug(name),
@@ -86,7 +89,8 @@ function productFromRows(items: SheetRow[], name: string, image?: string, id?: s
     productLine: identity.productLine || undefined,
     category: items[0].category,
     price: open?.price ?? variants[0]?.price ?? 0,
-    availability: stock <= 0 ? "out" : open && open.stock <= 2 && variants.filter((item) => item.stock > 0).length === 1 ? "low" : "in",
+    oldPrice: open?.oldPrice ?? variants[0]?.oldPrice,
+    availability: stock <= 0 ? "out" : selling.every((item) => item.stock <= 2) ? "low" : "in",
     featured: false,
     description: "",
     catalogImage: image,
@@ -145,6 +149,7 @@ export function App() {
   );
   const [screen, setScreen] = useState<Screen>(readProductOrigin);
   const [productId, setProductId] = useState<string | null>(readProductHash);
+  const [startQty, setStartQty] = useState(1);
   const catalogScroll = useRef(0);
   const opening = useRef<string | null>(null);
   const [cart, setCart] = useState<Record<string, number>>(readLooseCart);
@@ -402,7 +407,8 @@ export function App() {
     return () => observer.disconnect();
   }, [productId, screen]);
 
-  function openProduct(id: string) {
+  function openProduct(id: string, qty = 1) {
+    setStartQty(Math.max(1, Math.floor(qty) || 1));
     if (productId === id || opening.current === id) return;
     opening.current = id;
     const body = document.querySelector(".body");
@@ -530,7 +536,14 @@ export function App() {
           <>
             {heldRef.current.includes("home") ? (
               <section className={view === "home" ? "panel panel-home is-current" : "panel panel-home"} hidden={view !== "home"}>
-                <Home onOpen={showScreen} onProduct={openProduct} shelf={catalogMode === "live" ? liveProducts.slice(0, 4) : []} live={catalogMode === "live"} />
+                <Home
+                  onOpen={showScreen}
+                  onProduct={openProduct}
+                  shelf={catalogMode === "live" ? liveProducts.filter((item) => shopSection(item.category) !== "Наборы").slice(0, 4) : []}
+                  liquids={catalogMode === "live" ? liveProducts.filter((item) => item.category.trim().toLowerCase() === "liquids" || item.category.trim().toLowerCase() === "liquids1") : []}
+                  sets={catalogMode === "live" ? liveProducts.filter((item) => shopSection(item.category) === "Наборы") : []}
+                  live={catalogMode === "live"}
+                />
               </section>
             ) : null}
             {heldRef.current.includes("catalog") ? (
@@ -608,7 +621,7 @@ export function App() {
               </section>
             ) : null}
             {productId ? (
-              <ProductScreen productId={productId} cart={cart} onBack={closeProduct} onAdd={addToCart} onCart={() => { closeProduct(); showScreen("cart"); }} />
+              <ProductScreen productId={productId} startQty={startQty} cart={cart} onBack={closeProduct} onAdd={addToCart} onCart={() => { closeProduct(); showScreen("cart"); }} />
             ) : null}
           </>
         )}
@@ -711,11 +724,15 @@ function Home({
   onOpen,
   onProduct,
   shelf,
+  liquids,
+  sets,
   live,
 }: {
   onOpen: (screen: Screen) => void;
-  onProduct: (id: string) => void;
+  onProduct: (id: string, qty?: number) => void;
   shelf: Product[];
+  liquids: Product[];
+  sets: Product[];
   live: boolean;
 }) {
   const reduce = useReducedMotion();
@@ -723,7 +740,22 @@ function Home({
   const { theme, setTheme } = useTheme();
   const [terms, setTerms] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
+  const [focus, setFocus] = useState<"home" | "hits" | "sets">("home");
   const tools = useRef<HTMLDivElement>(null);
+  const banner = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const node = banner.current;
+    const scroller = node?.closest(".body");
+    if (!node || !(scroller instanceof HTMLElement)) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const shift = () => {
+      const travel = Math.min(scroller.scrollTop, 72);
+      node.style.setProperty("--hero-shift", `${(travel * 0.22).toFixed(1)}px`);
+    };
+    shift();
+    scroller.addEventListener("scroll", shift, { passive: true });
+    return () => scroller.removeEventListener("scroll", shift);
+  }, []);
   useEffect(() => {
     if (!langOpen) return;
     const close = (event: PointerEvent) => {
@@ -740,6 +772,13 @@ function Home({
     };
   }, [langOpen]);
   const cards = live ? shelf : products.filter((item) => shopSection(item.category)).slice(0, 4);
+  const hits = liquids.flatMap((item) => {
+    const offer = quantityOffer(item.category);
+    if (!offer) return [];
+    return offer.steps
+      .filter((step) => !step.talk && step.qty >= 2 && step.save > 0 && item.variants.some((variant) => variant.stock >= step.qty))
+      .map((step) => ({ id: `${item.id}-${step.qty}`, item, step }));
+  });
   const stage = typeof document !== "undefined" ? document.querySelector(".stage") : null;
   return (
     <motion.div
@@ -793,14 +832,82 @@ function Home({
           ) : null}
         </div>
       </motion.div>
-      <motion.section className="home-banner" variants={sectionItem}>
-        <p className="home-kicker">ELFIN Market · Hamburg</p>
-        <h2>{t("home.together")}</h2>
-        <p>{t("home.lead")}</p>
-        <button type="button" className="home-terms-link" onClick={() => setTerms(true)}>
-          {t("home.terms")}
-        </button>
-      </motion.section>
+      {focus === "home" ? <motion.section className="home-banner" variants={sectionItem} ref={banner}>
+        <div className="home-hero-copy">
+          <p className="home-kicker">ELFIN Market · Hamburg</p>
+          <h2>{t("home.together")}</h2>
+          <p>{t("home.lead")}</p>
+          <button type="button" className="home-terms-link" onClick={() => setTerms(true)}>
+            {t("home.terms")}
+          </button>
+        </div>
+        <div className="home-hero-art" aria-hidden="true">
+          <span className="home-hero-glow" />
+          <span className="home-hero-ring" />
+          <img className="home-hero-elf" src="/assets/home-elf.jpg" alt="" />
+        </div>
+      </motion.section> : null}
+      {focus !== "home" ? (
+        <div className="home-focus-bar">
+          <button type="button" className="home-back" onClick={() => setFocus("home")}>{t("home.back")}</button>
+          <h2>{focus === "hits" ? t("home.deals") : t("home.sets")}</h2>
+        </div>
+      ) : null}
+      {hits.length > 0 && focus !== "sets" ? (
+        <motion.div className="catalog home-vitrine" variants={sectionItem}>
+          {focus === "home" ? (
+            <div className="home-shelf-head">
+              <h2>{t("home.hits")}</h2>
+              <button type="button" className="home-all" onClick={() => setFocus("hits")}>{t("home.all")}</button>
+            </div>
+          ) : null}
+          <div className={focus === "hits" ? "hit-list" : "shelf"}>
+            {(focus === "hits" ? hits : hits.slice(0, 2)).map((hit) => (
+              <button key={hit.id} type="button" className="hit-card" onClick={() => onProduct(hit.item.id, hit.step.qty)}>
+                <HomeArt item={hit.item} />
+                <span className="hit-copy">
+                  <span className="product-name">{hit.step.qty} {lineTitle(hit.item)}</span>
+                  <span className="product-flavor">{hit.item.flavor}</span>
+                  <span className="product-price">
+                    {hit.step.full > hit.step.total ? <s>{euro(hit.step.full)}</s> : null}
+                    <strong>{euro(hit.step.total)}</strong>
+                  </span>
+                </span>
+                <em className="hit-save">{t("home.save", { sum: euro(hit.step.save) })}</em>
+              </button>
+            ))}
+          </div>
+        </motion.div>
+      ) : null}
+      {sets.length > 0 && focus !== "hits" ? (
+        focus === "home" ? (
+          <button type="button" className="sets-teaser" onClick={() => setFocus("sets")}>
+            <span>
+              <strong>{t("home.sets")}</strong>
+              <span>{t("home.setsLead")}</span>
+            </span>
+            <span className="home-all">{t("home.setsAll")}</span>
+          </button>
+        ) : (
+          <motion.div className="catalog home-vitrine" variants={sectionItem}>
+            <div className="shelf">
+              {sets.map((item) => (
+                <button key={item.id} type="button" className="product home-card" data-kind="set" onClick={() => onProduct(item.id)}>
+                  <HomeArt item={item} />
+                  <span className="product-name">{lineTitle(item)}</span>
+                  <span className="product-flavor">{item.flavor}</span>
+                  <span className="product-price">
+                    <strong>{euro(item.price)}</strong>
+                    {item.oldPrice ? <s>{euro(item.oldPrice)}</s> : null}
+                  </span>
+                  {item.oldPrice && item.oldPrice > item.price ? <em className="hit-save">{t("home.save", { sum: euro(item.oldPrice - item.price) })}</em> : null}
+                </button>
+              ))}
+            </div>
+          </motion.div>
+        )
+      ) : null}
+      {focus === "home" ? (
       <motion.div className="catalog home-vitrine" variants={sectionItem}>
         <div className="home-shelf-head">
           <h2>{t("home.catalog")} {live ? null : <span className="home-demo">{t("home.demo")}</span>}</h2>
@@ -817,6 +924,7 @@ function Home({
           ))}
         </div>
       </motion.div>
+      ) : null}
       {terms && stage
         ? createPortal(
             <div className="terms-layer">

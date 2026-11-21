@@ -267,22 +267,24 @@ export function CheckoutScreen({
         ) : authPhase === "initializing" ? null : (
           <p className="checkout-note">{authPhase === "expired" || authPhase === "error" || authFailed ? t("checkout.auth") : t("checkout.gate")}{botUrl ? <> <a href={botUrl}>{t("checkout.openTg")}</a></> : null}</p>
         )}
-        <label className="order-field">
-          <span>{t("checkout.courier")}</span>
-          <select value={courierId} onChange={(event) => chooseCourier(event.target.value)}>
-            <option value="">{t("checkout.pickCourier")}</option>
-            {couriers.map((item) => (
-              <option key={item.courier_id} value={item.courier_id}>{item.name} · {item.time_from}–{item.time_to}</option>
-            ))}
-          </select>
-        </label>
-        <label className="order-field">
-          <span>{t("checkout.time")}</span>
-          <select value={time} onChange={(event) => setTime(event.target.value)} disabled={!courier}>
-            <option value="">{courier ? t("checkout.time") : t("checkout.timeFirst")}</option>
-            {slots.map((slot) => <option key={slot} value={slot}>{slot}</option>)}
-          </select>
-        </label>
+        <div className="order-block">
+          <label className={courierId ? "order-field is-set" : "order-field"}>
+            <span>{t("checkout.courier")}</span>
+            <select value={courierId} onChange={(event) => chooseCourier(event.target.value)}>
+              <option value="">{t("checkout.pickCourier")}</option>
+              {couriers.map((item) => (
+                <option key={item.courier_id} value={item.courier_id}>{item.name} · {item.time_from}–{item.time_to}</option>
+              ))}
+            </select>
+          </label>
+          <label className={time ? "order-field is-set" : "order-field"}>
+            <span>{t("checkout.time")}</span>
+            <select value={time} onChange={(event) => setTime(event.target.value)} disabled={!courier}>
+              <option value="">{courier ? t("checkout.time") : t("checkout.timeFirst")}</option>
+              {slots.map((slot) => <option key={slot} value={slot}>{slot}</option>)}
+            </select>
+          </label>
+        </div>
       </div>
       <div className="order-dock">
         <p className="checkout-error" role={error ? "alert" : undefined}>{error ?? ""}</p>

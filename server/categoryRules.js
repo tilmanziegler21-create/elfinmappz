@@ -6,6 +6,7 @@ export function priceCategory(category) {
 
 export function sectionLabel(category) {
   if (priceCategory(category)) return "Жидкости";
+  if (String(category || "").trim().toLowerCase() === "sets") return "Наборы";
   return String(category || "");
 }
 

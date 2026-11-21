@@ -9,7 +9,7 @@ export type MediaEntry = {
   imageType: "transparent" | "photo";
   scene: ScenePreset;
   accent: SceneAccent;
-  category: "liquids" | "devices" | "pods";
+  category: "liquids" | "devices" | "pods" | "sets";
 };
 
 const scenes = new Set<ScenePreset>(["liquid-float", "device-float", "pod-float", "static-product"]);
@@ -31,6 +31,12 @@ export function mediaBySku(sku: string): MediaEntry | null {
 }
 
 const brandMedia: Array<{ test: (brand: string) => boolean; id: string }> = [
+  { test: (brand) => brand === "НАБОР №1", id: "set-1" },
+  { test: (brand) => brand === "НАБОР №2", id: "set-2" },
+  { test: (brand) => brand === "НАБОР №3", id: "set-3" },
+  { test: (brand) => brand === "НАБОР №4", id: "set-4" },
+  { test: (brand) => brand === "НАБОР №5", id: "set-5" },
+  { test: (brand) => brand === "НАБОР №6", id: "set-6" },
   { test: (brand) => brand === "PUFFY" || brand.startsWith("PUFFY "), id: "puffy-berry-cherry" },
   { test: (brand) => brand.startsWith("ELFLIQ"), id: "elfliq-watermelon" },
   { test: (brand) => brand.includes("SQUID"), id: "chaser-squid-game" },

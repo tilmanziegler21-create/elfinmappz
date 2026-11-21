@@ -230,6 +230,11 @@ export const availabilityLabel: Record<Availability, string> = {
   out: "Нет",
 };
 
+export function stockLine(t: (key: string) => string, availability: string, count: number) {
+  if (availability === "out" || count <= 0) return t("stock.out");
+  return `${t(`stock.${availability}`)} · ${count}`;
+}
+
 let sheetCatalog: Product[] = [];
 let shelfOn = false;
 
@@ -267,6 +272,31 @@ export function lineUnit(category: string, rowPrice: number, quantity: number) {
   const tier = tierUnit(category, quantity);
   if (tier == null) return rowPrice;
   return Math.min(rowPrice, tier);
+}
+
+export type QuantityStep = {
+  qty: number;
+  total: number;
+  full: number;
+  save: number;
+  percent: number;
+  talk: boolean;
+};
+
+export function quantityOffer(category: string) {
+  const bucket = priceBucket(category);
+  if (!shelfOn || !bucket) return null;
+  const base = shelfPrices[bucket][1];
+  const marks = bucket === "liquids1" ? [1, 2, 3, 5] : [1, 2, 3];
+  const steps: QuantityStep[] = marks.map((qty) => {
+    const unit = tierUnit(category, qty) ?? base;
+    const total = unit * qty;
+    const full = base * qty;
+    const save = Math.max(0, full - total);
+    return { qty, total, full, save, percent: save > 0 ? Math.round((save / full) * 100) : 0, talk: false };
+  });
+  if (bucket === "liquids") steps.push({ qty: 5, total: 0, full: 0, save: 0, percent: 0, talk: true });
+  return { base, steps };
 }
 
 export function findProduct(id: string) {
