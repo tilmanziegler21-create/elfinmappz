@@ -330,6 +330,13 @@ export function cartMoney(cart: Record<string, number>) {
   return priceCart(cart).total;
 }
 
+export function applyLoyalty(amount: number, percent: number) {
+  const level = Number(percent);
+  if (!Number.isFinite(level) || level <= 0 || amount <= 0) return { discount: 0, total: amount };
+  const discount = Math.round(amount * level) / 100;
+  return { discount, total: Math.max(0, Math.round((amount - discount) * 100) / 100) };
+}
+
 export function sanitizeCart(value: unknown): { cart: Record<string, number>; dropped: boolean } {
   if (!value || typeof value !== "object" || Array.isArray(value)) return { cart: {}, dropped: true };
   const cart: Record<string, number> = {};

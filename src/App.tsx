@@ -155,6 +155,7 @@ export function App() {
   const [botUrl, setBotUrl] = useState<string | null>(null);
   const [shopCity, setShopCity] = useState("HH");
   const [couriers, setCouriers] = useState<ApiCourier[]>([]);
+  const [loyaltyPercent, setLoyaltyPercent] = useState(0);
   const [catalogMode, setCatalogMode] = useState<"loading" | "demo" | "live" | "error">("loading");
   const [liveProducts, setLiveProducts] = useState<Product[]>([]);
   const [bootNonce, setBootNonce] = useState(0);
@@ -319,6 +320,24 @@ export function App() {
     window.addEventListener("hashchange", open);
     return () => window.removeEventListener("hashchange", open);
   }, [session]);
+
+  useEffect(() => {
+    if (!session?.token) {
+      setLoyaltyPercent(0);
+      return;
+    }
+    let alive = true;
+    api<{ loyalty?: { percent?: number } }>(`/api/order/history?city=${encodeURIComponent(session.city)}`, { token: session.token })
+      .then((data) => {
+        if (alive) setLoyaltyPercent(Number(data.loyalty?.percent) || 0);
+      })
+      .catch(() => {
+        if (alive) setLoyaltyPercent(0);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [session?.token, session?.city]);
 
   useEffect(() => {
     if (!configReady || catalogMode === "error") return;
@@ -556,6 +575,7 @@ export function App() {
                   onOpen={openProduct}
                   onCatalog={() => showScreen("catalog")}
                   onContinue={() => { setCheckoutHeld(true); setCheckoutOpen(true); }}
+                  loyaltyPercent={loyaltyPercent}
                 />
               </section>
             ) : null}
@@ -664,6 +684,7 @@ export function App() {
               onOrders={() => showScreen("orders")}
               onClose={() => setCheckoutOpen(false)}
               authFailed={Boolean(authError)}
+              loyaltyPercent={loyaltyPercent}
             />
           </div>
         </div>

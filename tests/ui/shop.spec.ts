@@ -396,6 +396,37 @@ test("количество меняет цену только у категор�
   await expect(page.locator(".cart-bar")).toContainText("92,00");
 });
 
+test("скидка повторной покупки снимается после цены liquids", async ({ page }) => {
+  await page.route("**/api/config", async (route) => {
+    const response = await route.fetch();
+    const json = await response.json();
+    json.catalog = "sheets";
+    await route.fulfill({ response, json });
+  });
+  await page.route("**/api/order/history**", (route) => route.fulfill({
+    json: { orders: [], loyalty: { step: 2, percent: 5 } },
+  }));
+  await page.route("**/api/catalog**", (route) => route.fulfill({
+    json: {
+      source: "sheets",
+      liquidPrices: { liquids: { 1: 18, 2: 16, 3: 15 } },
+      products: [
+        { sku: "LQ-001", name: "Lemon Lime", category: "liquids", brand: "ELFLIQ", price: 18, stock: 11, active: true },
+        { sku: "LQ-0088", name: "Tropic Punch", category: "liquids1", brand: "CHASER LUX 50MG", price: 20, stock: 4, active: true },
+      ],
+    },
+  }));
+  await openShop(page);
+  await page.getByRole("button", { name: "Каталог" }).click();
+  const catalog = page.locator("section.is-current");
+  await catalog.locator("article").filter({ has: page.locator("h3", { hasText: /^ELFLIQ$/ }) }).locator("h3").click();
+  await page.locator(".product-page").getByRole("button", { name: "Больше" }).click();
+  await page.locator(".product-page").getByRole("button", { name: /В корзину/ }).click();
+  await page.getByRole("button", { name: "Корзина" }).click();
+  await expect(page.locator(".cart-bar")).toContainText("Скидка 5%");
+  await expect(page.locator(".cart-bar")).toContainText("30,40");
+});
+
 test("характеристики на 320 не остаются под кнопкой", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 700 });
   await openShop(page);

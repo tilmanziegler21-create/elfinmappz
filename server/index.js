@@ -4,6 +4,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import express from "express";
 import jwt from "jsonwebtoken";
+import { loyaltyForDelivered } from "./loyalty.js";
 import { liquidTierMap, priceOrder } from "./pricing.js";
 import {
   activeReservations,
@@ -1121,7 +1122,8 @@ app.post("/api/order/create", beginOrderTrace, refuseEphemeralOrders, requireAut
   }
 
   const sheetTiers = liquidTierMap(catalog.prices?.rules);
-  const priced = priceOrder(normalized, sheetTiers || workbook().liquidPrices, req.body?.promoCode, req.user, db().promos);
+  const loyalty = loyaltyForDelivered(deliveredCount(req.user.tg_id));
+  const priced = priceOrder(normalized, sheetTiers || workbook().liquidPrices, req.body?.promoCode, { ...req.user, level_percent: loyalty.percent }, db().promos);
   if (!priced.ok) {
     if (key) delete db().orderIdempotency[key];
     mark(req, "ORDER_VALIDATED", priceFailureCode(priced.error));
@@ -1194,6 +1196,8 @@ app.post("/api/order/create", beginOrderTrace, refuseEphemeralOrders, requireAut
     displayNumber,
     orderText: `Новый заказ ${orderNumber(order)}\nСумма: ${priced.total}\nТовары: ${normalized.length} позиций`,
     totalAmount: priced.total,
+    discountAmount: priced.discount,
+    loyalty,
     status: "buffer",
     expiresAt: order.expires_at,
   };
@@ -1363,7 +1367,7 @@ app.get("/api/order/history", requireAuth, (req, res) => {
     .filter((order) => order.user_id === req.user.tg_id && order.city === city)
     .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
     .map(customerOrder);
-  res.json({ orders });
+  res.json({ orders, loyalty: loyaltyForDelivered(deliveredCount(req.user.tg_id)) });
 });
 
 app.get("/api/courier/orders", requireAuth, async (req, res) => {
@@ -1553,6 +1557,10 @@ function ownOrders(tgId) {
     .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
 }
 
+function deliveredCount(tgId) {
+  return ownOrders(tgId).filter((order) => normalizeStatus(order.status) === "delivered").length;
+}
+
 function botContext() {
   return {
     miniAppUrl: process.env.MINIAPP_PUBLIC_URL || "",
@@ -1587,7 +1595,8 @@ function botContext() {
     profile(user) {
       const delivered = ownOrders(user.tg_id).filter((order) => normalizeStatus(order.status) === "delivered");
       const last = delivered.map((order) => order.delivered_at || order.created_at).sort().at(-1) || "";
-      return { delivered: delivered.length, last, level: Math.min(10, delivered.length + 1) };
+      const loyalty = loyaltyForDelivered(delivered.length);
+      return { delivered: delivered.length, last, level: loyalty.step, percent: loyalty.percent };
     },
     async saveTicket(user, orderId, text) {
       const owned = orderId && db().orders[orderId]?.user_id === user.tg_id ? orderId : "";

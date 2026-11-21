@@ -4,6 +4,7 @@ import path from "path";
 import { normalizeCouriers, normalizePrices, normalizeProducts } from "./hhNormalize.js";
 import { catalogIdentity } from "./catalogLine.js";
 import { brandGroup, priceCategory, sectionLabel } from "./categoryRules.js";
+import { loyaltyForDelivered } from "./loyalty.js";
 import { calculateOrderPricing, liquidTierMap, priceOrder } from "./pricing.js";
 import { courierSlots } from "./slots.js";
 
@@ -75,6 +76,12 @@ const twoLiquids = calculateOrderPricing([{ quantity: 2, price: 18, category: "l
 const threeLiquids = calculateOrderPricing([{ quantity: 3, price: 18, category: "liquids" }], liveTiers);
 const chaserQty = calculateOrderPricing([{ quantity: 3, price: 20, category: "liquids1" }], liveTiers);
 record("liquids-qty-tiers", oneLiquid.subtotal === 18 && oneLiquid.discount === 0 && twoLiquids.subtotal === 36 && twoLiquids.discount === 4 && threeLiquids.subtotal === 54 && threeLiquids.discount === 9 && chaserQty.discount === 0, JSON.stringify({ oneLiquid, twoLiquids, threeLiquids, chaserQty }));
+const steps = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 20].map((count) => loyaltyForDelivered(count).percent).join(",");
+record("loyalty-steps", steps === "0,5,10,15,0,5,10,15,20,10,10" && loyaltyForDelivered(9).step === 10, steps);
+const loyal = priceOrder([{ quantity: 2, price: 18, category: "liquids" }], liveTiers, "", { level_percent: 5 }, []);
+record("loyalty-after-liquids", loyal.ok && loyal.subtotal === 36 && loyal.discount === 5.6 && loyal.total === 30.4, JSON.stringify(loyal));
+const vip = priceOrder([{ quantity: 1, price: 20, category: "liquids1" }], liveTiers, "", { level_percent: loyaltyForDelivered(9).percent }, []);
+record("loyalty-vip", vip.ok && vip.discount === 2 && vip.total === 18, JSON.stringify(vip));
 
 const flat = calculateOrderPricing([
   { quantity: 2, price: 10, category: "liquids" },

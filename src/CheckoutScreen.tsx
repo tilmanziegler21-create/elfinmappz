@@ -5,7 +5,7 @@ import { EmptyState } from "./EmptyState";
 import { api, todayDate, type ApiCourier, type AuthPhase, type SessionUser } from "./api";
 import { courierChatLink } from "./telegram";
 import { cartTitle, orderNumber } from "./lineLabel";
-import { priceCart, euro } from "./products";
+import { applyLoyalty, priceCart, euro } from "./products";
 import { tapSpring } from "./motion";
 import { moneyLocale, useI18n } from "./i18n";
 
@@ -25,6 +25,7 @@ export function CheckoutScreen({
   onOrders,
   onClose,
   authFailed = false,
+  loyaltyPercent = 0,
 }: {
   cart: Record<string, number>;
   token: string;
@@ -41,13 +42,15 @@ export function CheckoutScreen({
   onOrders: () => void;
   onClose?: () => void;
   authFailed?: boolean;
+  loyaltyPercent?: number;
 }) {
   const reduce = useReducedMotion();
   const { t, lang } = useI18n();
   const money = moneyLocale(lang);
   const priced = priceCart(cart);
   const lines = priced.lines;
-  const total = priced.total;
+  const loyalty = applyLoyalty(priced.total, loyaltyPercent);
+  const total = loyalty.total;
   const idempotencyKey = useRef(`checkout-${crypto.randomUUID()}`);
   const createdId = useRef<string | null>(null);
   const confirmed = useRef(false);
@@ -110,9 +113,10 @@ export function CheckoutScreen({
     setError(null);
     setBusy(true);
     setPhase("loading");
+    let charged = total;
     try {
       if (!createdId.current) {
-        const created = await api<{ orderId: string; displayNumber?: number | null }>("/api/order/create", {
+        const created = await api<{ orderId: string; displayNumber?: number | null; totalAmount?: number }>("/api/order/create", {
           method: "POST",
           token,
           headers: { "Idempotency-Key": idempotencyKey.current, "x-request-id": idempotencyKey.current },
@@ -128,6 +132,7 @@ export function CheckoutScreen({
         });
         createdId.current = created.orderId;
         if (created.displayNumber) setDisplayNumber(created.displayNumber);
+        if (typeof created.totalAmount === "number") charged = created.totalAmount;
       }
       if (!confirmed.current) {
         const confirmedBody = await api<{ telegram?: boolean; displayNumber?: number | null; writeCourier?: { url?: string; start?: string } }>("/api/order/confirm", {
@@ -171,7 +176,7 @@ export function CheckoutScreen({
       } catch {
         /* The order is already stored. A later payment write must not look like a failed checkout. */
       }
-      setDoneTotal(total);
+      setDoneTotal(charged);
       setOrderId(createdId.current);
       setPhase("done");
       onClearCart();
@@ -295,7 +300,13 @@ export function CheckoutScreen({
         <p className="cart-caption">{t("checkout.cashOnly")}</p>
         <div className="order-sum">
           <span>{t("checkout.goods")}</span>
-          <strong>{euro(total, money)}</strong>
+          <strong>{euro(priced.total, money)}</strong>
+          {loyalty.discount > 0 ? (
+            <>
+              <span>{t("cart.discount", { percent: loyaltyPercent })}</span>
+              <strong>{euro(loyalty.discount, money)}</strong>
+            </>
+          ) : null}
           <span>{t("checkout.fulfillment")}</span>
           <strong>{fulfillment === "pickup" ? t("checkout.pickup") : t("checkout.delivery")}</strong>
           <span className="is-total">{t("cart.total")}</span>

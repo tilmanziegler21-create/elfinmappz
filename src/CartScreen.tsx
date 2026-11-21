@@ -3,7 +3,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { EmptyState } from "./EmptyState";
 import { lineTitle } from "./catalogLine";
 import { cartTitle } from "./lineLabel";
-import { priceCart, euro } from "./products";
+import { applyLoyalty, priceCart, euro } from "./products";
 import { favoriteExit } from "./productMotion";
 import { cardItem, cardList, ease, tapSpring } from "./motion";
 import { moneyLocale, useI18n } from "./i18n";
@@ -17,6 +17,7 @@ export function CartScreen({
   onOpen,
   onCatalog,
   onContinue,
+  loyaltyPercent = 0,
 }: {
   cart: Record<string, number>;
   adjusted: boolean;
@@ -26,6 +27,7 @@ export function CartScreen({
   onOpen: (productId: string) => void;
   onCatalog: () => void;
   onContinue: () => void;
+  loyaltyPercent?: number;
 }) {
   const reduce = useReducedMotion();
   const { t, lang } = useI18n();
@@ -33,7 +35,8 @@ export function CartScreen({
   const priced = priceCart(cart);
   const lines = priced.lines;
   const units = lines.reduce((sum, line) => sum + line.qty, 0);
-  const total = priced.total;
+  const loyalty = applyLoyalty(priced.total, loyaltyPercent);
+  const total = loyalty.total;
   const [undo, setUndo] = useState<{ key: string; qty: number } | null>(null);
   const [revealEmpty, setRevealEmpty] = useState(lines.length === 0);
   const previousCount = useRef(lines.length);
@@ -181,8 +184,14 @@ export function CartScreen({
         <div className="cart-bar">
           <div className="cart-sum">
             <span>{lines.length} {positionWord(lines.length, lang)} · {units} {t("cart.units")}</span>
-            <Amount value={euro(total, money)} />
+            <Amount value={euro(priced.total, money)} />
           </div>
+          {loyalty.discount > 0 ? (
+            <div className="cart-sum">
+              <span>{t("cart.discount", { percent: loyaltyPercent })}</span>
+              <Amount value={euro(loyalty.discount, money)} />
+            </div>
+          ) : null}
           <div className="cart-sum">
             <span>{t("cart.total")}</span>
             <Amount value={euro(total, money)} />
