@@ -21,12 +21,29 @@ export async function readHamburgSources() {
   const report = hhTabReport(titles);
   if (!report.ready) throw fail("SHEETS_HH_MISSING", 503);
   const expected = sheetTabs().filter((name) => /^(products|LiquidPrices|couriers)_/.test(name));
-  const [productsSheet, pricesSheet, couriersSheet] = await Promise.all(expected.map((title) => readTab(title)));
-  const products = normalizeProducts(productsSheet);
+  const primaryProducts = expected.find((name) => name.startsWith("products_"));
+  const productTitles = [primaryProducts, ...titles.filter((name) => /^products_/i.test(name) && name !== primaryProducts)].filter(Boolean);
+  const [productSheets, pricesSheet, couriersSheet] = await Promise.all([
+    Promise.all(productTitles.map((title) => readTab(title))),
+    readTab(expected.find((name) => name.startsWith("LiquidPrices_"))),
+    readTab(expected.find((name) => name.startsWith("couriers_"))),
+  ]);
+  const products = normalizeProducts(productSheets[0]);
   const prices = normalizePrices(pricesSheet);
   const couriers = normalizeCouriers(couriersSheet);
   if (products.issues.some((item) => item.code === "MISSING_COLUMN")) throw fail("SHEETS_INVALID", 422);
   const rejectedSku = new Set(products.issues.filter((item) => item.level === "error" && item.sku).map((item) => item.sku));
+  const seen = new Set(products.products.map((item) => item.sku));
+  for (const sheet of productSheets.slice(1)) {
+    const extra = normalizeProducts(sheet);
+    if (extra.issues.some((item) => item.code === "MISSING_COLUMN")) continue;
+    const rejected = new Set(extra.issues.filter((item) => item.level === "error" && item.sku).map((item) => item.sku));
+    for (const item of extra.products) {
+      if (!item.active || !item.sku || seen.has(item.sku) || rejected.has(item.sku)) continue;
+      products.products.push(item);
+      seen.add(item.sku);
+    }
+  }
   const rejectedCourier = new Set(couriers.issues.filter((item) => item.courierId).map((item) => item.courierId));
   const keptCouriers = couriers.couriers.filter((item) => item.courier_id && !rejectedCourier.has(item.courier_id));
   const issueCounts = {};
