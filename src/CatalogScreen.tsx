@@ -10,6 +10,7 @@ import { cardItem, cardList, tapSpring } from "./motion";
 import { readSaved, SAVED_EVENT, writeSaved } from "./saved";
 import { useI18n } from "./i18n";
 import { setNumberOf, setShot } from "./setCopy";
+import { SetBuilder } from "./SetBuilder";
 import { useTheme } from "./theme";
 
 const sections = ["Все", "Жидкости", "Наборы", "POD", "Устройства"] as const;
@@ -51,7 +52,7 @@ export function Catalog({
   cart: Record<string, number>;
   items: Product[];
   mode: "loading" | "demo" | "live" | "error";
-  onAdd: (id: string) => void;
+  onAdd: (id: string, qty?: number, variantId?: string) => "added" | "limit" | "unavailable";
   onOpen: (id: string) => void;
   onRefresh: () => void;
 }) {
@@ -91,7 +92,7 @@ export function Catalog({
     const needle = query.trim().toLowerCase();
     return source.filter((item) => {
       const group = shopSection(item.category);
-      const inSection = section === "Все" || group === section;
+      const inSection = section === "Все" || group === section || (section === "Наборы" && (group === "POD" || item.category.trim().toLowerCase() === "liquids"));
       const inBrand = section !== "Жидкости" || brand === "Все бренды" || brandGroup(item.brand || "") === brand;
       const inSaved = !savedOnly || saved.includes(item.id);
       const stockOk = !inStock || (item.availability !== "out" && !item.preview);
@@ -106,7 +107,10 @@ export function Catalog({
   }, [source, query, section, brand, savedOnly, saved, inStock]);
 
   const catalogEmpty = mode === "live" && source.length === 0;
-  const showGrid = (mode === "demo" || mode === "live") && visible.length > 0;
+  const building = section === "Наборы" && (mode === "demo" || mode === "live");
+  const showGrid = (mode === "demo" || mode === "live") && visible.length > 0 && !building;
+  const setPods = source.filter((item) => shopSection(item.category) === "POD" && !item.preview);
+  const setLiquids = source.filter((item) => item.category.trim().toLowerCase() === "liquids" && !item.preview);
 
   function chooseSection(next: (typeof sections)[number]) {
     setSection(next);
@@ -220,7 +224,7 @@ export function Catalog({
 
       {mode === "demo" ? <p className="catalog-demo">{t("catalog.demoNote")}</p> : null}
 
-      {mode !== "error" && mode !== "loading" && !catalogEmpty && visible.length === 0 ? (
+      {mode !== "error" && mode !== "loading" && !catalogEmpty && visible.length === 0 && !building ? (
         <EmptyState
           variant="search"
           size="sm"
@@ -229,6 +233,8 @@ export function Catalog({
           primaryAction={{ label: t("catalog.reset"), onClick: resetFilters }}
         />
       ) : null}
+
+      {building ? <SetBuilder pods={setPods} liquids={setLiquids} onAdd={onAdd} /> : null}
 
       {showGrid && (mode === "demo" || mode === "live") ? (
         <section className="catalog-section">

@@ -27,7 +27,6 @@ import {
 import { clearHamburgCache, readHamburgSources } from "./hhRead.js";
 import { hhTabReport, listSheetTitles, loadServiceAccount, sheetCode, sheetTabs, spreadsheetMeta } from "./sheetsRead.js";
 import { withMedia } from "./productMedia.js";
-import { allocateSet, partKind, setAvailable, setRecipe } from "./sets.js";
 import { bindNoticeRecipient, enqueueNotice, telegramTestMode, trySendNotice } from "./notices.js";
 import { allocateDisplayNumbers } from "./pgState.js";
 import { customerHandle, formatLine, orderNumber } from "./lineLabel.js";
@@ -146,15 +145,6 @@ function withPuffy(products) {
   return [...rows, puffyRow];
 }
 
-const setOffer = [
-  ["1", "2 картриджа + 1 жидкость", 25, 30],
-  ["2", "4 картриджа + 2 жидкости", 45, 56],
-  ["3", "1 устройство + 2 жидкости", 50, 62],
-  ["4", "1 устройство + 2 жидкости + 2 картриджа", 60, 76],
-  ["5", "1 устройство + 4 жидкости", 70, 94],
-  ["6", "1 устройство + 4 жидкости + 4 картриджа", 90, 118],
-];
-
 function outsideHold(sku) {
   if (workbook().products.some((row) => row.sku === sku)) return 0;
   let qty = 0;
@@ -175,47 +165,24 @@ function partFree(rows, sku) {
 
 function shownStock(raw, products) {
   return products.map((row) => {
-    if (setRecipe(row.sku)) return row;
     const stock = partFree(raw, row.sku);
     return { ...row, stock, active: stock > 0 && row.active !== false };
   });
 }
 
 function hhRow(row) {
-  if (partKind(row) !== "cartridge") return row;
+  const category = String(row?.category || "").trim().toLowerCase();
+  const brand = String(row?.brand || "").trim().toUpperCase();
+  if (category !== "cartridge" && !brand.includes("CARTRIDGE")) return row;
   return { ...row, price: 5 };
-}
-
-function withSets(products) {
-  const rows = (products || []).map(hhRow);
-  if (rows.some((item) => String(item.brand || "").toUpperCase().includes("НАБОР"))) return rows;
-  const freeOf = (sku) => partFree(rows, sku);
-  const setRows = setOffer.map(([number, name, price, oldPrice]) => {
-    const sku = `SET-${number}`;
-    const stock = setAvailable(sku, rows, freeOf);
-    return {
-      id: sku,
-      sku,
-      name,
-      flavor: name,
-      category: "sets",
-      brand: `НАБОР №${number}`,
-      price,
-      oldPrice,
-      stock,
-      active: true,
-      image: `/assets/products/sets/set-${number}-light.jpg`,
-    };
-  });
-  return [...setRows, ...rows];
 }
 
 async function shopCatalog() {
   if (useLocalCatalog()) return { products: workbook().products, couriers: workbook().couriers };
   try {
     const data = await readHamburgSources();
-    const raw = withPuffy(data.products);
-    return { ...data, products: withSets(raw) };
+    const raw = withPuffy(data.products).map(hhRow);
+    return { ...data, products: raw };
   } catch (error) {
     if (process.env.NODE_ENV === "production") throw error;
     return { products: workbook().products, couriers: workbook().couriers };
@@ -1111,8 +1078,8 @@ app.get("/api/catalog", async (req, res) => {
   if (useLocalCatalog()) return res.json({ source: "demo", city, products: localProducts() });
   try {
     const data = await readHamburgSources();
-    const raw = withPuffy(data.products);
-    res.json({ source: "sheets", city: "HH", products: shownStock(raw, withSets(raw)).map(withMedia), liquidPrices: liquidTierMap(data.prices?.rules) });
+    const raw = withPuffy(data.products).map(hhRow);
+    res.json({ source: "sheets", city: "HH", products: shownStock(raw, raw).map(withMedia), liquidPrices: liquidTierMap(data.prices?.rules) });
   } catch (error) {
     const failure = sheetsFailure(error);
     res.status(failure.status).json(failure.body);
@@ -1207,7 +1174,7 @@ app.post("/api/order/create", beginOrderTrace, refuseEphemeralOrders, requireAut
   }
   const normalized = [];
   const claimed = new Map();
-  const stockRows = catalog.products.filter((row) => !setRecipe(row.sku));
+  const stockRows = catalog.products;
   const freeOf = (sku) => partFree(stockRows, sku) - (claimed.get(sku) || 0);
   for (const item of items) {
     if (!item || typeof item !== "object") {
@@ -1228,24 +1195,12 @@ app.post("/api/order/create", beginOrderTrace, refuseEphemeralOrders, requireAut
       mark(req, "ORDER_VALIDATED", "PRODUCT_NOT_FOUND");
       return res.status(404).json({ error: `Product not found: ${sku}` });
     }
-    let components = null;
-    if (setRecipe(sku)) {
-      const allocation = allocateSet(sku, qty, stockRows, freeOf);
-      if (!allocation.ok) {
-        if (key) delete db().orderIdempotency[key];
-        mark(req, "ORDER_VALIDATED", "INSUFFICIENT_STOCK");
-        return res.status(409).json({ error: `Insufficient stock for ${sku}` });
-      }
-      components = allocation.lines;
-      for (const part of components) claimed.set(part.sku, (claimed.get(part.sku) || 0) + part.qty);
-    } else {
-      if (freeOf(sku) < qty || qty < 1) {
-        if (key) delete db().orderIdempotency[key];
-        mark(req, "ORDER_VALIDATED", "INSUFFICIENT_STOCK");
-        return res.status(409).json({ error: `Insufficient stock for ${sku}` });
-      }
-      claimed.set(sku, (claimed.get(sku) || 0) + qty);
+    if (freeOf(sku) < qty) {
+      if (key) delete db().orderIdempotency[key];
+      mark(req, "ORDER_VALIDATED", "INSUFFICIENT_STOCK");
+      return res.status(409).json({ error: `Insufficient stock for ${sku}` });
     }
+    claimed.set(sku, (claimed.get(sku) || 0) + qty);
     const brand = String(product.brand || "").trim();
     const flavor = String(product.name || "").trim();
     const sent = item.variant ? String(item.variant).trim().slice(0, 120) : "";
@@ -1258,7 +1213,6 @@ app.post("/api/order/create", beginOrderTrace, refuseEphemeralOrders, requireAut
       brand,
       category: product.category,
       variant,
-      ...(components ? { components } : {}),
     });
   }
 
