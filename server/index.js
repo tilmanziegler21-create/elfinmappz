@@ -170,18 +170,11 @@ function shownStock(raw, products) {
   });
 }
 
-function hhRow(row) {
-  const category = String(row?.category || "").trim().toLowerCase();
-  const brand = String(row?.brand || "").trim().toUpperCase();
-  if (category !== "cartridge" && !brand.includes("CARTRIDGE")) return row;
-  return { ...row, price: 5 };
-}
-
 async function shopCatalog() {
   if (useLocalCatalog()) return { products: workbook().products, couriers: workbook().couriers };
   try {
     const data = await readHamburgSources();
-    const raw = withPuffy(data.products).map(hhRow);
+    const raw = withPuffy(data.products);
     return { ...data, products: raw };
   } catch (error) {
     if (process.env.NODE_ENV === "production") throw error;
@@ -1078,7 +1071,7 @@ app.get("/api/catalog", async (req, res) => {
   if (useLocalCatalog()) return res.json({ source: "demo", city, products: localProducts() });
   try {
     const data = await readHamburgSources();
-    const raw = withPuffy(data.products).map(hhRow);
+    const raw = withPuffy(data.products);
     res.json({ source: "sheets", city: "HH", products: shownStock(raw, raw).map(withMedia), liquidPrices: liquidTierMap(data.prices?.rules) });
   } catch (error) {
     const failure = sheetsFailure(error);

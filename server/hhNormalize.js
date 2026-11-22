@@ -18,8 +18,15 @@ function bool(value) {
 
 function number(value) {
   if (value === "") return null;
-  const parsed = Number(value.replace(",", "."));
+  const parsed = Number(String(value).replace(/\s/g, "").replace(",", "."));
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function podRow(category, sku) {
+  const cat = String(category || "").trim().toLowerCase();
+  if (cat === "cartridge") return false;
+  if (cat === "pod" || cat === "pods") return true;
+  return /^pd-/i.test(String(sku || ""));
 }
 
 export function normalizeProducts({ headers, rows }) {
@@ -33,15 +40,19 @@ export function normalizeProducts({ headers, rows }) {
     const name = cell(row, headers, "name");
     if (!sku && !name) return;
     const price = number(cell(row, headers, "price"));
-    const stock = number(cell(row, headers, "stock"));
-    const active = bool(cell(row, headers, "active"));
+    let stock = number(cell(row, headers, "stock"));
+    if (stock !== null && !Number.isInteger(stock)) stock = Math.round(stock);
+    let active = bool(cell(row, headers, "active"));
     const category = cell(row, headers, "category");
+    const pod = podRow(category, sku);
+    if (pod && stock === null) stock = 0;
+    if (pod && active === null) active = stock > 0;
     if (!sku) issues.push({ level: "error", code: "EMPTY_SKU", row: index + 2 });
     if (sku && seen.has(sku)) issues.push({ level: "error", code: "DUPLICATE_SKU", sku });
     if (sku) seen.add(sku);
     if (price === null || price < 0) issues.push({ level: "error", code: "BAD_PRICE", sku });
-    if (stock === null || stock < 0 || !Number.isInteger(stock)) issues.push({ level: "error", code: "BAD_STOCK", sku });
-    if (active === null) issues.push({ level: "error", code: "BAD_ACTIVE", sku });
+    if (!pod && (stock === null || stock < 0)) issues.push({ level: "error", code: "BAD_STOCK", sku });
+    if (!pod && active === null) issues.push({ level: "error", code: "BAD_ACTIVE", sku });
     products.push({
       id: sku,
       sku,
