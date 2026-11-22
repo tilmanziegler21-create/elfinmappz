@@ -546,6 +546,7 @@ export function App() {
                   liquids={catalogMode === "live" ? liveProducts.filter((item) => item.category.trim().toLowerCase() === "liquids" || item.category.trim().toLowerCase() === "liquids1") : []}
                   pods={catalogMode === "live" ? liveProducts.filter((item) => isPodCategory(item.category)) : []}
                   cartridges={catalogMode === "live" ? liveProducts.filter((item) => item.category.trim().toLowerCase() === "cartridge") : []}
+                  cart={cart}
                   live={catalogMode === "live"}
                 />
               </section>
@@ -732,6 +733,7 @@ function Home({
   liquids,
   pods,
   cartridges,
+  cart,
   live,
 }: {
   onOpen: (screen: Screen) => void;
@@ -741,6 +743,7 @@ function Home({
   liquids: Product[];
   pods: Product[];
   cartridges: Product[];
+  cart: Record<string, number>;
   live: boolean;
 }) {
   const reduce = useReducedMotion();
@@ -749,6 +752,7 @@ function Home({
   const [terms, setTerms] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
   const [focus, setFocus] = useState<"home" | "hits" | "sets">("home");
+  const [setId, setSetId] = useState("");
   const tools = useRef<HTMLDivElement>(null);
   const banner = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -869,9 +873,18 @@ function Home({
             <button type="button" className="home-all" onClick={() => setFocus("hits")}>{t("home.all")}</button>
           </div>
           <div className="spotlight">
-            <button type="button" onClick={() => onProduct("voex")}><img src="/assets/home/spotlight-new.jpg" alt={t("home.spotlightNew")} /></button>
-            <button type="button" onClick={() => onProduct("puffy")}><img src="/assets/home/spotlight-popular.jpg" alt={t("home.spotlightPopular")} /></button>
-            <button type="button" onClick={() => onProduct("xros-6-mini")}><img src="/assets/home/spotlight-back.jpg" alt={t("home.spotlightBack")} /></button>
+            <button type="button" className="spot-card" onClick={() => onProduct("voex")}>
+              <span className="spot-art"><img src="/assets/products/liquids/voex-pepper-mint.jpg" alt="" /></span>
+              <span className="spot-copy"><strong>{t("home.spotlightNew")}</strong><em>VOEX</em></span>
+            </button>
+            <button type="button" className="spot-card" onClick={() => onProduct("puffy")}>
+              <span className="spot-art"><img src="/assets/products/liquids/puffy-berry-cherry.png" alt="" /></span>
+              <span className="spot-copy"><strong>{t("home.spotlightPopular")}</strong><em>PUFFY</em></span>
+            </button>
+            <button type="button" className="spot-card" onClick={() => onProduct("xros-6-mini")}>
+              <span className="spot-art"><img src="/assets/products/pods/xros-6-mini.png" alt="" /></span>
+              <span className="spot-copy"><strong>{t("home.spotlightBack")}</strong><em>XROS 6 MINI</em></span>
+            </button>
           </div>
         </motion.div>
       ) : null}
@@ -896,11 +909,19 @@ function Home({
         </motion.div>
       ) : null}
       {focus === "home" ? (
-        <button type="button" className="sets-banner" onClick={() => setFocus("sets")}>
-          <img src="/assets/home/sets-banner.jpg" alt={t("home.sets")} />
-        </button>
+        <div className="home-sets">
+          <div className="home-shelf-head"><h2>{t("home.sets")}</h2></div>
+          <div className="set-rail">
+            {(["1", "2", "3", "4", "5", "6"] as const).map((id) => (
+              <button key={id} type="button" onClick={() => { setSetId(id); setFocus("sets"); }}>
+                <img src={setShot(id, theme)} alt="" />
+                <span>{t(`set.${id}.title`)}</span>
+              </button>
+            ))}
+          </div>
+        </div>
       ) : focus === "sets" ? (
-        <SetBuilder pods={pods} liquids={setLiquids} cartridges={cartridges} onAdd={onAdd} />
+        <SetBuilder pods={pods} liquids={setLiquids} cartridges={cartridges} cart={cart} initialOffer={setId} onAdd={onAdd} />
       ) : null}
       {focus === "home" ? (
       <motion.div className="catalog home-vitrine" variants={sectionItem}>

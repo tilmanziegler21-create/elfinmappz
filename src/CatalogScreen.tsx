@@ -237,7 +237,7 @@ export function Catalog({
         />
       ) : null}
 
-      {building ? <SetBuilder pods={setPods} liquids={setLiquids} cartridges={setCartridges} onAdd={onAdd} /> : null}
+      {building ? <SetBuilder pods={setPods} liquids={setLiquids} cartridges={setCartridges} cart={cart} onAdd={onAdd} /> : null}
 
       {showGrid && (mode === "demo" || mode === "live") ? (
         <section className="catalog-section">
