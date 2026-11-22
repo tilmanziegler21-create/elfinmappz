@@ -10,12 +10,23 @@ export function sectionLabel(category: string) {
   return category;
 }
 
+export function isDisposableCategory(category: string) {
+  const value = category.trim().toLowerCase();
+  return value === "electronics" || value === "device" || value === "devices";
+}
+
+export function isPodCategory(category: string) {
+  if (isDisposableCategory(category)) return false;
+  const value = category.trim().toLowerCase();
+  return value === "pod" || value === "pods";
+}
+
 export function shopSection(category: string) {
   if (priceCategory(category)) return "Жидкости";
   const value = category.trim().toLowerCase();
   if (value === "sets") return "Наборы";
-  if (value === "pod" || value === "pods") return "POD";
-  if (value === "electronics" || value === "devices" || value === "device") return "Устройства";
+  if (isPodCategory(category)) return "POD";
+  if (isDisposableCategory(category)) return "Устройства";
   return "";
 }
 

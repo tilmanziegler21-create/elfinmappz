@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { lineTitle } from "./catalogLine";
+import { isPodCategory } from "./categoryRules";
 import { useI18n } from "./i18n";
 import { euro, type Product, type Variant } from "./products";
 
@@ -23,13 +24,14 @@ export function SetBuilder({
   onAdd: (id: string, qty?: number, variantId?: string) => AddResult;
 }) {
   const { t } = useI18n();
+  const devices = pods.filter((item) => isPodCategory(item.category));
   const [step, setStep] = useState(0);
   const [modelId, setModelId] = useState("");
   const [colorId, setColorId] = useState("");
   const [brandId, setBrandId] = useState("");
   const [flavorIds, setFlavorIds] = useState<string[]>([]);
   const [note, setNote] = useState<"added" | "missing" | null>(null);
-  const model = pods.find((item) => item.id === modelId) ?? null;
+  const model = devices.find((item) => item.id === modelId) ?? null;
   const brand = liquids.find((item) => item.id === brandId) ?? null;
   const colors = useMemo(() => (model ? openChoices(model) : []), [model]);
   const flavors = useMemo(() => (brand ? openChoices(brand) : []), [brand]);
@@ -70,7 +72,7 @@ export function SetBuilder({
   }
 
   const choices: Variant[] = current === "model"
-    ? pods.map((item) => ({ id: item.id, label: lineTitle(item), price: item.price, availability: item.availability, stock: item.variants.reduce((sumStock, variant) => sumStock + variant.stock, 0) }))
+    ? devices.map((item) => ({ id: item.id, label: lineTitle(item), price: item.price, availability: item.availability, stock: item.variants.reduce((sumStock, variant) => sumStock + variant.stock, 0) }))
     : current === "color"
       ? colors
       : current === "brand"

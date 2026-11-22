@@ -4,7 +4,7 @@ import { EmptyState } from "./EmptyState";
 import { preloadImages } from "./ImagePreloader";
 import { productTap } from "./productMotion";
 import { lineTitle } from "./catalogLine";
-import { brandFilters, brandGroup, shopSection } from "./categoryRules";
+import { brandFilters, brandGroup, isPodCategory, shopSection } from "./categoryRules";
 import { euro, products, stockLine, unitsFor, type Product } from "./products";
 import { cardItem, cardList, tapSpring } from "./motion";
 import { readSaved, SAVED_EVENT, writeSaved } from "./saved";
@@ -89,19 +89,21 @@ export function Catalog({
   }, [source, mode]);
 
   const visible = useMemo(() => {
-    const needle = query.trim().toLowerCase();
+    const needle = query.trim().toLowerCase().replace(/[^a-z0-9а-яё]+/gi, "");
+    const matches = (value: string) => value.toLowerCase().replace(/[^a-z0-9а-яё]+/gi, "").includes(needle);
     return source.filter((item) => {
       const group = shopSection(item.category);
-      const inSection = section === "Все" || group === section || (section === "Наборы" && (group === "POD" || item.category.trim().toLowerCase() === "liquids"));
+      const pod = isPodCategory(item.category);
+      const inSection = section === "Все" || group === section || (section === "POD" && pod) || (section === "Наборы" && (pod || item.category.trim().toLowerCase() === "liquids"));
       const inBrand = section !== "Жидкости" || brand === "Все бренды" || brandGroup(item.brand || "") === brand;
       const inSaved = !savedOnly || saved.includes(item.id);
       const stockOk = !inStock || (item.availability !== "out" && !item.preview);
       const inQuery = needle.length === 0
-        || item.name.toLowerCase().includes(needle)
-        || item.flavor.toLowerCase().includes(needle)
-        || (item.brand || "").toLowerCase().includes(needle)
-        || (item.productLine || "").toLowerCase().includes(needle)
-        || item.variants.some((variant) => variant.label.toLowerCase().includes(needle));
+        || matches(item.name)
+        || matches(item.flavor)
+        || matches(item.brand || "")
+        || matches(item.productLine || "")
+        || item.variants.some((variant) => matches(variant.label));
       return inSection && inBrand && inSaved && stockOk && inQuery;
     });
   }, [source, query, section, brand, savedOnly, saved, inStock]);
@@ -109,7 +111,7 @@ export function Catalog({
   const catalogEmpty = mode === "live" && source.length === 0;
   const building = section === "Наборы" && (mode === "demo" || mode === "live");
   const showGrid = (mode === "demo" || mode === "live") && visible.length > 0 && !building;
-  const setPods = source.filter((item) => shopSection(item.category) === "POD" && !item.preview);
+  const setPods = source.filter((item) => isPodCategory(item.category) && !item.preview);
   const setLiquids = source.filter((item) => item.category.trim().toLowerCase() === "liquids" && !item.preview);
 
   function chooseSection(next: (typeof sections)[number]) {

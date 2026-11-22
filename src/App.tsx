@@ -8,7 +8,7 @@ import { BOOT_TIMEOUT_MS, bootPhase, bootProgress, WARM_KEY, type BootMarks } fr
 import { ElfinSplash } from "./components/ElfinSplash";
 import { CartScreen } from "./CartScreen";
 import { Catalog } from "./CatalogScreen";
-import { shopSection } from "./categoryRules";
+import { isPodCategory, shopSection } from "./categoryRules";
 import { CheckoutScreen } from "./CheckoutScreen";
 import { CourierScreen } from "./CourierScreen";
 import { OrdersScreen } from "./OrdersScreen";
@@ -544,7 +544,7 @@ export function App() {
                   onAdd={addToCart}
                   shelf={catalogMode === "live" ? liveProducts.filter((item) => shopSection(item.category) !== "Наборы").slice(0, 4) : []}
                   liquids={catalogMode === "live" ? liveProducts.filter((item) => item.category.trim().toLowerCase() === "liquids" || item.category.trim().toLowerCase() === "liquids1") : []}
-                  pods={catalogMode === "live" ? liveProducts.filter((item) => shopSection(item.category) === "POD") : []}
+                  pods={catalogMode === "live" ? liveProducts.filter((item) => isPodCategory(item.category)) : []}
                   live={catalogMode === "live"}
                 />
               </section>
