@@ -32,9 +32,10 @@ export function shopSection(category: string) {
 
 export function brandGroup(brand: string) {
   const value = brand.trim().toUpperCase().replace(/\s+/g, " ");
-  if (value === "HQD" || value === "ELFLIQ" || value === "VOZOL" || value === "PUFFY") return value;
+  if (value === "HQD" || value === "ELFLIQ" || value === "VOZOL" || value === "PUFFY" || value === "VOEX") return value;
   if (value.startsWith("PUFFY ") || value.startsWith("PUFFY-")) return "PUFFY";
+  if (value.startsWith("VOEX ") || value.startsWith("VOEX-")) return "VOEX";
   return value === "CHASER" || value.startsWith("CHASER ") || value.startsWith("CHASER-") ? "CHASER" : "";
 }
 
-export const brandFilters = ["HQD", "ELFLIQ", "VOZOL", "CHASER", "PUFFY"] as const;
+export const brandFilters = ["HQD", "ELFLIQ", "VOZOL", "CHASER", "PUFFY", "VOEX"] as const;

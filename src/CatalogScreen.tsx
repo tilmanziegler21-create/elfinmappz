@@ -113,6 +113,7 @@ export function Catalog({
   const showGrid = (mode === "demo" || mode === "live") && visible.length > 0 && !building;
   const setPods = source.filter((item) => isPodCategory(item.category) && !item.preview);
   const setLiquids = source.filter((item) => item.category.trim().toLowerCase() === "liquids" && !item.preview);
+  const setCartridges = source.filter((item) => item.category.trim().toLowerCase() === "cartridge" && !item.preview);
 
   function chooseSection(next: (typeof sections)[number]) {
     setSection(next);
@@ -236,7 +237,7 @@ export function Catalog({
         />
       ) : null}
 
-      {building ? <SetBuilder pods={setPods} liquids={setLiquids} onAdd={onAdd} /> : null}
+      {building ? <SetBuilder pods={setPods} liquids={setLiquids} cartridges={setCartridges} onAdd={onAdd} /> : null}
 
       {showGrid && (mode === "demo" || mode === "live") ? (
         <section className="catalog-section">

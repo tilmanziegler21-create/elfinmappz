@@ -45,6 +45,7 @@ const brandMedia: Array<{ test: (brand: string) => boolean; id: string }> = [
   { test: (brand) => brand.includes("LIMITED EDITION") || brand.includes("SPECIAL EDITION"), id: "chaser-special" },
   { test: (brand) => brand === "CHASER LUX" || brand.startsWith("CHASER LUX "), id: "chaser-lux-turbo-mint" },
   { test: (brand) => brand.includes("CARTRIDGE") && brand.includes("XROS"), id: "pd-0013" },
+  { test: (brand) => brand === "VOEX" || brand.startsWith("VOEX "), id: "voex-pepper-mint" },
   { test: (brand) => brand.startsWith("HQD"), id: "hqd-grapey" },
   { test: (brand) => brand.startsWith("VOZOL"), id: "vozol-strawberry-ice" },
   { test: (brand) => brand.includes("XROS 6"), id: "xros-6-mini" },

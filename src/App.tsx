@@ -545,6 +545,7 @@ export function App() {
                   shelf={catalogMode === "live" ? liveProducts.filter((item) => shopSection(item.category) !== "Наборы").slice(0, 4) : []}
                   liquids={catalogMode === "live" ? liveProducts.filter((item) => item.category.trim().toLowerCase() === "liquids" || item.category.trim().toLowerCase() === "liquids1") : []}
                   pods={catalogMode === "live" ? liveProducts.filter((item) => isPodCategory(item.category)) : []}
+                  cartridges={catalogMode === "live" ? liveProducts.filter((item) => item.category.trim().toLowerCase() === "cartridge") : []}
                   live={catalogMode === "live"}
                 />
               </section>
@@ -730,6 +731,7 @@ function Home({
   shelf,
   liquids,
   pods,
+  cartridges,
   live,
 }: {
   onOpen: (screen: Screen) => void;
@@ -738,6 +740,7 @@ function Home({
   shelf: Product[];
   liquids: Product[];
   pods: Product[];
+  cartridges: Product[];
   live: boolean;
 }) {
   const reduce = useReducedMotion();
@@ -785,7 +788,6 @@ function Home({
       .map((step) => ({ id: `${item.id}-${step.qty}`, item, step }));
   });
   const setLiquids = liquids.filter((item) => item.category.trim().toLowerCase() === "liquids");
-  const canBuild = pods.length > 0 || setLiquids.length > 0;
   const stage = typeof document !== "undefined" ? document.querySelector(".stage") : null;
   return (
     <motion.div
@@ -860,16 +862,23 @@ function Home({
           <h2>{focus === "hits" ? t("home.deals") : t("home.sets")}</h2>
         </div>
       ) : null}
-      {hits.length > 0 && focus !== "sets" ? (
+      {focus === "home" ? (
+        <motion.div className="home-spotlight" variants={sectionItem}>
+          <div className="home-shelf-head">
+            <h2>{t("home.spotlight")}</h2>
+            <button type="button" className="home-all" onClick={() => setFocus("hits")}>{t("home.all")}</button>
+          </div>
+          <div className="spotlight">
+            <button type="button" onClick={() => onProduct("voex")}><img src="/assets/home/spotlight-new.jpg" alt={t("home.spotlightNew")} /></button>
+            <button type="button" onClick={() => onProduct("puffy")}><img src="/assets/home/spotlight-popular.jpg" alt={t("home.spotlightPopular")} /></button>
+            <button type="button" onClick={() => onProduct("xros-6-mini")}><img src="/assets/home/spotlight-back.jpg" alt={t("home.spotlightBack")} /></button>
+          </div>
+        </motion.div>
+      ) : null}
+      {hits.length > 0 && focus === "hits" ? (
         <motion.div className="catalog home-vitrine" variants={sectionItem}>
-          {focus === "home" ? (
-            <div className="home-shelf-head">
-              <h2>{t("home.hits")}</h2>
-              <button type="button" className="home-all" onClick={() => setFocus("hits")}>{t("home.all")}</button>
-            </div>
-          ) : null}
-          <div className={focus === "hits" ? "hit-list" : "shelf"}>
-            {(focus === "hits" ? hits : hits.slice(0, 2)).map((hit) => (
+          <div className="hit-list">
+            {hits.map((hit) => (
               <button key={hit.id} type="button" className="hit-card" onClick={() => onProduct(hit.item.id, hit.step.qty)}>
                 <HomeArt item={hit.item} theme={theme} />
                 <span className="hit-copy">
@@ -886,18 +895,12 @@ function Home({
           </div>
         </motion.div>
       ) : null}
-      {canBuild && focus !== "hits" ? (
-        focus === "home" ? (
-          <button type="button" className="sets-teaser" onClick={() => setFocus("sets")}>
-            <span>
-              <strong>{t("home.sets")}</strong>
-              <span>{t("home.setsLead")}</span>
-            </span>
-            <span className="home-all">{t("home.setsAll")}</span>
-          </button>
-        ) : (
-          <SetBuilder pods={pods} liquids={setLiquids} onAdd={onAdd} />
-        )
+      {focus === "home" ? (
+        <button type="button" className="sets-banner" onClick={() => setFocus("sets")}>
+          <img src="/assets/home/sets-banner.jpg" alt={t("home.sets")} />
+        </button>
+      ) : focus === "sets" ? (
+        <SetBuilder pods={pods} liquids={setLiquids} cartridges={cartridges} onAdd={onAdd} />
       ) : null}
       {focus === "home" ? (
       <motion.div className="catalog home-vitrine" variants={sectionItem}>

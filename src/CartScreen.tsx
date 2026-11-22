@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { EmptyState } from "./EmptyState";
 import { lineTitle } from "./catalogLine";
+import { priceCategory } from "./categoryRules";
 import { cartTitle } from "./lineLabel";
 import { priceCart, euro } from "./products";
 import { favoriteExit } from "./productMotion";
@@ -102,6 +103,7 @@ export function CartScreen({
               const blocked = line.variant.availability === "out" || line.variant.stock <= 0;
               const atLimit = line.qty >= line.variant.stock;
               const setNo = setNumberOf(line.product);
+              const liquid = Boolean(priceCategory(line.product.category));
               const thumb = setNo ? setShot(setNo, theme) : line.product.catalogImage;
               return (
                 <motion.article
@@ -112,7 +114,7 @@ export function CartScreen({
                   transition={{ duration: 0.28, ease }}
                 >
                   <button type="button" className="cart-open" onClick={() => onOpen(line.product.id)}>
-                    <CartThumb src={thumb} isSet={Boolean(setNo)} />
+                    <CartThumb src={thumb} kind={setNo ? "set" : liquid ? "liquid" : undefined} />
                     <span className="cart-copy">
                       <span className="cart-brand">{setNo ? t(`set.${setNo}.title`) : lineTitle(line.product)}</span>
                       <span className="cart-name" title={setNo ? t(`set.${setNo}.line`) : cartTitle(line.product, line.variant)}>{setNo ? t(`set.${setNo}.line`) : cartDetail(line.product, line.variant)}</span>
@@ -227,13 +229,13 @@ function positionWord(count: number, lang: string) {
   return "позиций";
 }
 
-function CartThumb({ src, isSet }: { src?: string; isSet: boolean }) {
+function CartThumb({ src, kind }: { src?: string; kind?: "set" | "liquid" }) {
   const [failed, setFailed] = useState(false);
   useEffect(() => {
     setFailed(false);
   }, [src]);
   return (
-    <span className="cart-thumb" data-kind={isSet ? "set" : undefined} aria-hidden="true">
+    <span className="cart-thumb" data-kind={kind} aria-hidden="true">
       {src && !failed
         ? <img src={src} alt="" decoding="async" onError={() => setFailed(true)} />
         : <span className="mark" />}

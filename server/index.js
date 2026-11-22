@@ -145,6 +145,25 @@ function withPuffy(products) {
   return [...rows, puffyRow];
 }
 
+const voexRow = {
+  id: "VOEX-PEPPER-MINT",
+  sku: "VOEX-PEPPER-MINT",
+  name: "Pepper Mint",
+  flavor: "Pepper Mint",
+  category: "liquids1",
+  brand: "VOEX",
+  price: 20,
+  stock: 10,
+  active: true,
+  image: "/assets/products/liquids/voex-pepper-mint.jpg",
+};
+
+function withVoex(products) {
+  const rows = products || [];
+  if (rows.some((item) => String(item.brand || "").toUpperCase().includes("VOEX"))) return rows;
+  return [...rows, voexRow];
+}
+
 function outsideHold(sku) {
   if (workbook().products.some((row) => row.sku === sku)) return 0;
   let qty = 0;
@@ -174,7 +193,7 @@ async function shopCatalog() {
   if (useLocalCatalog()) return { products: workbook().products, couriers: workbook().couriers };
   try {
     const data = await readHamburgSources();
-    const raw = withPuffy(data.products);
+    const raw = withVoex(withPuffy(data.products));
     return { ...data, products: raw };
   } catch (error) {
     if (process.env.NODE_ENV === "production") throw error;
@@ -1071,7 +1090,7 @@ app.get("/api/catalog", async (req, res) => {
   if (useLocalCatalog()) return res.json({ source: "demo", city, products: localProducts() });
   try {
     const data = await readHamburgSources();
-    const raw = withPuffy(data.products);
+    const raw = withVoex(withPuffy(data.products));
     res.json({ source: "sheets", city: "HH", products: shownStock(raw, raw).map(withMedia), liquidPrices: liquidTierMap(data.prices?.rules) });
   } catch (error) {
     const failure = sheetsFailure(error);

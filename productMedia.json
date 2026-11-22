@@ -109,6 +109,14 @@
     "accent": "pod",
     "category": "pods"
   },
+  "voex-pepper-mint": {
+    "sku": "VOEX-PEPPER-MINT",
+    "image": "/assets/products/liquids/voex-pepper-mint.jpg",
+    "imageType": "photo",
+    "scene": "static-product",
+    "accent": "mint",
+    "category": "liquids"
+  },
   "elf-bc-45000": {
     "sku": "",
     "image": "/assets/products/devices/elf-bc-45000.png",
