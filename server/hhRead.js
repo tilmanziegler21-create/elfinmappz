@@ -51,6 +51,22 @@ export async function readHamburgSources() {
       seen.add(item.sku);
     }
   }
+  const xrosColors = [
+    ["PD-01", "Black", 1],
+    ["PD-002", "Brown", 1],
+    ["PD-003", "Jelly Blue", 3],
+    ["PD-004", "Jelly Green", 3],
+    ["PD-005", "Jelly Orange", 3],
+    ["PD-006", "Jelly Pink", 1],
+    ["PD-007", "Plume Blue", 3],
+    ["PD-008", "Plume Pink", 3],
+    ["PD-009", "Plume White", 3],
+  ];
+  for (const [sku, name, stock] of xrosColors) {
+    if (seen.has(sku)) continue;
+    kept.push({ id: sku, sku, name, flavor: name, category: "PODS", brand: "XROS 6 MINI", price: 30, stock, active: true, image: "" });
+    seen.add(sku);
+  }
   const rejectedCourier = new Set(couriers.issues.filter((item) => item.courierId).map((item) => item.courierId));
   const keptCouriers = couriers.couriers.filter((item) => item.courier_id && !rejectedCourier.has(item.courier_id));
   const issueCounts = {};
