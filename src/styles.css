@@ -1172,12 +1172,9 @@ a.btn {
 }
 
 .set-rail {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(200px, 78%);
+  display: flex;
+  flex-direction: column;
   gap: 10px;
-  overflow-x: auto;
-  scrollbar-width: none;
 }
 
 .set-rail::-webkit-scrollbar {
@@ -2383,17 +2380,24 @@ a.btn {
 }
 
 .set-row {
-  display: grid;
-  grid-template-columns: 104px minmax(0, 1fr) auto;
-  gap: 10px;
-  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   width: 100%;
   padding: 8px;
   border: 1px solid var(--line);
-  border-radius: 16px;
+  border-radius: 18px;
   background: var(--card);
   color: inherit;
   text-align: left;
+}
+
+.set-row-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 4px 4px;
 }
 
 .set-row-art {
@@ -2438,7 +2442,57 @@ a.btn {
 .set-check {
   display: flex;
   align-items: center;
-  min-height: 44px;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 52px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--card);
+  color: inherit;
+  text-align: left;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.set-check i {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border: 1.5px solid var(--line);
+  border-radius: 999px;
+}
+
+.set-check.is-on {
+  border-color: transparent;
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.set-check.is-on i {
+  border-color: transparent;
+  background: var(--accent);
+  box-shadow: inset 0 0 0 5px var(--card);
+}
+
+.set-kept {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.set-colors {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.set-color {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
   padding: 0 12px;
   border: 1px solid var(--line);
   border-radius: 14px;
@@ -2449,7 +2503,15 @@ a.btn {
   font-weight: 700;
 }
 
-.set-check.is-on {
+.set-color i {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28);
+}
+
+.set-color.is-on {
   border-color: transparent;
   box-shadow: 0 0 0 2px var(--accent);
 }

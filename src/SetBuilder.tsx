@@ -41,6 +41,22 @@ function samePick(item: Choice, pick: PickId | null) {
   return Boolean(pick && item.productId === pick.productId && item.id === pick.id);
 }
 
+function colorDot(label: string) {
+  const name = label.split("·").pop()?.trim().toLowerCase() || "";
+  const dots: Record<string, string> = {
+    black: "#17191d",
+    brown: "#6d4b34",
+    "jelly blue": "#2f8fe0",
+    "jelly green": "#2faf6a",
+    "jelly orange": "#ef7a32",
+    "jelly pink": "#ee6d9a",
+    "plume blue": "#8fd0f2",
+    "plume pink": "#f2b3cc",
+    "plume white": "#f4f7fb",
+  };
+  return dots[name] || "var(--accent)";
+}
+
 function Shot({ src, alt }: { src?: string; alt: string }) {
   if (!src) return <span className="set-shot-empty" aria-hidden="true" />;
   return <img src={src} alt={alt} draggable={false} />;
@@ -166,11 +182,13 @@ export function SetBuilder({
           {offers.map((item) => (
             <button key={item.id} type="button" className="set-row" onClick={() => reset(item.id)}>
               <span className="set-row-art"><Shot src={setShot(item.id, theme)} alt="" /></span>
-              <span className="set-row-copy">
-                <strong>{t(`set.${item.id}.title`)}</strong>
-                <em>{t(`set.${item.id}.line`)}</em>
+              <span className="set-row-foot">
+                <span className="set-row-copy">
+                  <strong>{t(`set.${item.id}.title`)}</strong>
+                  <em>{t(`set.${item.id}.line`)}</em>
+                </span>
+                <span className="set-row-price">{euro(item.price)}</span>
               </span>
-              <span className="set-row-price">{euro(item.price)}</span>
             </button>
           ))}
         </div>
@@ -182,20 +200,23 @@ export function SetBuilder({
     <div className="set-build">
       <button type="button" className="set-row" onClick={() => reset("")}>
         <span className="set-row-art"><Shot src={setShot(offer.id, theme)} alt="" /></span>
-        <span className="set-row-copy">
-          <strong>{t(`set.${offer.id}.title`)}</strong>
-          <em>{t(`set.${offer.id}.line`)}</em>
+        <span className="set-row-foot">
+          <span className="set-row-copy">
+            <strong>{t(`set.${offer.id}.title`)}</strong>
+            <em>{t(`set.${offer.id}.line`)}</em>
+          </span>
+          <span className="set-row-price">{euro(offer.price)}</span>
         </span>
-        <span className="set-row-price">{euro(offer.price)}</span>
       </button>
       {offer.pod ? (
         <fieldset className="set-step">
           <legend>{t("set.color")}</legend>
           {picture(devices[0] ?? null) ? <div className="set-device-preview"><Shot src={color?.image || picture(devices[0] ?? null)} alt="" /></div> : null}
           {colors.length ? (
-            <div className="set-swatches" role="radiogroup" aria-label={t("set.color")}>
+            <div className="set-colors" role="radiogroup" aria-label={t("set.color")}>
               {colors.map((item) => (
-                <button key={item.productId + item.id} type="button" role="radio" aria-checked={samePick(item, colorPick)} className={samePick(item, colorPick) ? "set-swatch is-on" : "set-swatch"} onClick={() => { setColorPick({ productId: item.productId, id: item.id }); setNote(null); }}>
+                <button key={item.productId + item.id} type="button" role="radio" aria-checked={samePick(item, colorPick)} className={samePick(item, colorPick) ? "set-color is-on" : "set-color"} onClick={() => { setColorPick({ productId: item.productId, id: item.id }); setNote(null); }}>
+                  <i style={{ background: colorDot(item.label) }} aria-hidden="true" />
                   {item.label}
                 </button>
               ))}
@@ -234,22 +255,27 @@ export function SetBuilder({
       {brand ? (
         <fieldset className="set-step">
           <legend>{t("set.flavors")}</legend>
-          {picked.length ? (
-            <div className="set-swatches" aria-label={t("set.picked", { have: picked.length, need: offer.liquids })}>
-              {picked.map((item) => (
-                <button key={item.productId + item.id} type="button" className="set-swatch is-on" onClick={() => toggleFlavor(item)}>
-                  {liquids.length > 1 ? `${item.brandTitle} · ${item.label}` : item.label}
+          {picked.some((item) => item.productId !== brand.id) ? (
+            <div className="set-kept">
+              {picked.filter((item) => item.productId !== brand.id).map((item) => (
+                <button key={item.productId + item.id} type="button" className="set-check is-on" onClick={() => toggleFlavor(item)}>
+                  <span>{item.brandTitle} · {item.label}</span>
+                  <i aria-hidden="true" />
                 </button>
               ))}
             </div>
           ) : null}
           {flavors.length ? (
             <div className="set-checks" role="group" aria-label={t("set.flavors")}>
-              {flavors.map((item) => (
-                <button key={item.productId + item.id} type="button" role="checkbox" aria-checked={flavorPicks.some((pick) => samePick(item, pick))} className={flavorPicks.some((pick) => samePick(item, pick)) ? "set-check is-on" : "set-check"} onClick={() => toggleFlavor(item)}>
-                  {item.label}
-                </button>
-              ))}
+              {flavors.map((item) => {
+                const on = flavorPicks.some((pick) => samePick(item, pick));
+                return (
+                  <button key={item.productId + item.id} type="button" role="checkbox" aria-checked={on} className={on ? "set-check is-on" : "set-check"} onClick={() => toggleFlavor(item)}>
+                    <span>{item.label}</span>
+                    <i aria-hidden="true" />
+                  </button>
+                );
+              })}
             </div>
           ) : <p className="set-empty">{t("set.noLiquid")}</p>}
         </fieldset>
