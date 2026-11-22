@@ -435,20 +435,21 @@ export function App() {
     window.history.pushState(null, "", `${window.location.pathname}${window.location.search}`);
   }
 
+  const cartRef = useRef(cart);
+  cartRef.current = cart;
+
   function addToCart(productIdToAdd: string, qty = 1, variantId?: string): "added" | "limit" | "unavailable" {
     const product = findProduct(productIdToAdd);
     const variant = product?.variants.find((item) => item.id === variantId) ?? (product ? defaultVariant(product) : null);
     if (!product || !variant || variant.availability === "out" || variant.stock <= 0) return "unavailable";
     const key = lineKey(product.id, variant.id);
-    let status: "added" | "limit" = "limit";
-    setCart((current) => {
-      const have = current[key] ?? 0;
-      const room = variant.stock - have;
-      if (room <= 0) return current;
-      status = "added";
-      return { ...current, [key]: have + Math.min(qty, room) };
-    });
-    return status;
+    const have = cartRef.current[key] ?? 0;
+    const room = variant.stock - have;
+    if (room <= 0) return "limit";
+    const next = { ...cartRef.current, [key]: have + Math.min(qty, room) };
+    cartRef.current = next;
+    setCart(next);
+    return "added";
   }
 
   function changeQty(key: string, qty: number) {
@@ -911,6 +912,9 @@ function Home({
       {focus === "home" ? (
         <div className="home-sets">
           <div className="home-shelf-head"><h2>{t("home.sets")}</h2></div>
+          <button type="button" className="sets-banner" onClick={() => { setSetId(""); setFocus("sets"); }}>
+            <img src="/assets/home/sets-banner.jpg" alt={t("home.sets")} />
+          </button>
           <div className="set-rail">
             {(["1", "2", "3", "4", "5", "6"] as const).map((id) => (
               <button key={id} type="button" onClick={() => { setSetId(id); setFocus("sets"); }}>

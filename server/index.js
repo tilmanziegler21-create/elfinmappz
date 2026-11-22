@@ -6,6 +6,7 @@ import express from "express";
 import jwt from "jsonwebtoken";
 import { loyaltyForDelivered } from "./loyalty.js";
 import { liquidTierMap, priceOrder, shelfPrices } from "./pricing.js";
+import { setDealPrice } from "./setOffers.js";
 import {
   activeReservations,
   addReservation,
@@ -1229,6 +1230,11 @@ app.post("/api/order/create", beginOrderTrace, refuseEphemeralOrders, requireAut
   }
 
   const priced = priceOrder(normalized, shelfPrices, String(req.body?.promoCode || "").slice(0, 64), req.user, db().promos);
+  const deal = setDealPrice(req.body?.setOffer, normalized);
+  if (priced.ok && deal != null && deal < priced.total) {
+    priced.discount = Math.round((priced.discount + (priced.total - deal)) * 100) / 100;
+    priced.total = deal;
+  }
   if (!priced.ok) {
     if (key) delete db().orderIdempotency[key];
     mark(req, "ORDER_VALIDATED", priceFailureCode(priced.error));

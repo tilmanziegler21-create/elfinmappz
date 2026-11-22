@@ -1,5 +1,6 @@
 import { sectionLabel } from "./categoryRules";
 import { mediaFor } from "./productMedia";
+import { bundleOffer, scaleToPrice } from "./setBundle";
 
 export type Availability = "in" | "low" | "out";
 
@@ -356,7 +357,10 @@ export function priceCart(cart: Record<string, number>) {
     cents += Math.round(unitPrice * 100) * line.qty;
     return { ...line, unitPrice, total: (Math.round(unitPrice * 100) * line.qty) / 100 };
   });
-  return { lines, total: cents / 100 };
+  const priced = { lines, total: cents / 100 };
+  const bundle = bundleOffer(cart);
+  if (!bundle) return priced;
+  return scaleToPrice(priced.lines, bundle.price);
 }
 
 export function cartMoney(cart: Record<string, number>) {

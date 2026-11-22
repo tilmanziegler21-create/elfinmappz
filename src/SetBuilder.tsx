@@ -4,11 +4,12 @@ import { isPodCategory } from "./categoryRules";
 import { useI18n } from "./i18n";
 import { mediaByBrand, mediaBySku } from "./productMedia";
 import { euro, lineKey, type Product, type Variant } from "./products";
+import { saveSetBundle } from "./setBundle";
 import { setShot } from "./setCopy";
 import { useTheme } from "./theme";
 
 type AddResult = "added" | "limit" | "unavailable";
-type Choice = Variant & { image?: string; productId: string };
+type Choice = Variant & { image?: string; productId: string; brandTitle: string };
 type PickId = { productId: string; id: string };
 
 const offers = [
@@ -30,9 +31,10 @@ function shotFor(product: Product, variantId: string) {
 }
 
 function openChoices(product: Product): Choice[] {
+  const brandTitle = lineTitle(product);
   return product.variants
     .filter((item) => item.availability !== "out" && item.stock > 0)
-    .map((item) => ({ ...item, productId: product.id, image: shotFor(product, item.id), label: item.label === "—" ? lineTitle(product) : item.label }));
+    .map((item) => ({ ...item, productId: product.id, brandTitle, image: shotFor(product, item.id), label: item.label === "—" ? brandTitle : item.label }));
 }
 
 function samePick(item: Choice, pick: PickId | null) {
@@ -66,7 +68,7 @@ export function SetBuilder({
   const [colorPick, setColorPick] = useState<PickId | null>(null);
   const [brandId, setBrandId] = useState("");
   const [cartridgePick, setCartridgePick] = useState<PickId | null>(null);
-  const [flavorIds, setFlavorIds] = useState<string[]>([]);
+  const [flavorPicks, setFlavorPicks] = useState<PickId[]>([]);
   const [note, setNote] = useState<"added" | "missing" | null>(null);
   useEffect(() => {
     if (!initialOffer) return;
@@ -74,11 +76,11 @@ export function SetBuilder({
     setColorPick(null);
     setBrandId("");
     setCartridgePick(null);
-    setFlavorIds([]);
+    setFlavorPicks([]);
     setNote(null);
   }, [initialOffer]);
   const offer = offers.find((item) => item.id === offerId) ?? null;
-  const brand = liquids.length === 1 ? liquids[0] : liquids.find((item) => item.id === brandId) ?? null;
+  const brand = liquids.find((item) => item.id === brandId) ?? liquids[0] ?? null;
 
   function room(item: Choice, qty: number) {
     return item.stock - (cart[lineKey(item.productId, item.id)] ?? 0) >= qty;
@@ -87,36 +89,39 @@ export function SetBuilder({
   const colors = useMemo(() => devices.flatMap((item) => openChoices(item).map((choice) => ({
     ...choice,
     label: devices.length > 1 ? `${lineTitle(item)} · ${choice.label}` : choice.label,
-  }))).filter((item) => item.stock - (cart[lineKey(item.productId, item.id)] ?? 0) >= 1), [devices, cart]);
+  }))).filter((item) => samePick(item, colorPick) || item.stock - (cart[lineKey(item.productId, item.id)] ?? 0) >= 1), [devices, cart, colorPick]);
   const cartridgeChoices = useMemo(() => {
     const all = cartridges.flatMap((item) => openChoices(item));
     if (!offer || offer.cartridges === 0) return all;
     return all.filter((item) => item.stock - (cart[lineKey(item.productId, item.id)] ?? 0) >= offer.cartridges);
   }, [cartridges, offer, cart]);
-  const flavors = useMemo(() => (brand ? openChoices(brand).filter((item) => item.stock - (cart[lineKey(item.productId, item.id)] ?? 0) >= 1) : []), [brand, cart]);
+  const catalogFlavors = useMemo(() => liquids.flatMap((item) => openChoices(item)).filter((item) => flavorPicks.some((pick) => samePick(item, pick)) || item.stock - (cart[lineKey(item.productId, item.id)] ?? 0) >= 1), [liquids, cart, flavorPicks]);
+  const flavors = useMemo(() => (brand ? catalogFlavors.filter((item) => item.productId === brand.id) : []), [brand, catalogFlavors]);
   const color = colors.find((item) => samePick(item, colorPick)) ?? null;
   const cartridge = cartridgeChoices.length === 1
     ? cartridgeChoices[0]
     : cartridgeChoices.find((item) => samePick(item, cartridgePick)) ?? null;
-  const picked = flavors.filter((item) => flavorIds.includes(item.id));
-  const ready = Boolean(offer && brand && picked.length === offer.liquids && (!offer.pod || color) && (offer.cartridges === 0 || cartridge));
+  const picked = flavorPicks.flatMap((pick) => catalogFlavors.filter((item) => samePick(item, pick)));
+  const ready = Boolean(offer && picked.length === offer.liquids && (!offer.pod || color) && (offer.cartridges === 0 || cartridge));
 
   function reset(id: string) {
     setOfferId(id);
     setColorPick(null);
     setBrandId("");
     setCartridgePick(null);
-    setFlavorIds([]);
+    setFlavorPicks([]);
     setNote(null);
   }
 
-  function toggleFlavor(id: string) {
+  function toggleFlavor(pick: PickId) {
     if (!offer) return;
     setNote(null);
-    setFlavorIds((current) => {
-      if (current.includes(id)) return current.filter((item) => item !== id);
+    setFlavorPicks((current) => {
+      if (current.some((item) => item.productId === pick.productId && item.id === pick.id)) {
+        return current.filter((item) => item.productId !== pick.productId || item.id !== pick.id);
+      }
       if (current.length >= offer.liquids) return current;
-      return [...current, id];
+      return [...current, pick];
     });
   }
 
@@ -127,22 +132,30 @@ export function SetBuilder({
     if (offer.cartridges > 0 && cartridgeChoices.length === 0) return t("set.noCartridge");
     if (offer.cartridges > 0 && !cartridge) return t("set.needCartridge");
     if (liquids.length === 0) return t("set.noLiquid");
-    if (!brand) return t("set.needBrand");
-    return t("set.picked", { have: picked.length, need: offer.liquids });
+    return "";
   }
 
   function add() {
-    if (!offer || !ready || !brand || (offer.cartridges > 0 && !cartridge)) return;
+    if (!offer || !ready || (offer.cartridges > 0 && !cartridge)) return;
     const lines: Array<[string, number, string, Choice]> = [];
     if (offer.pod && color) lines.push([color.productId, 1, color.id, color]);
-    for (const flavor of picked) lines.push([brand.id, 1, flavor.id, flavor]);
+    for (const flavor of picked) lines.push([flavor.productId, 1, flavor.id, flavor]);
     if (offer.cartridges > 0 && cartridge) lines.push([cartridge.productId, offer.cartridges, cartridge.id, cartridge]);
     if (lines.some(([, qty, , item]) => !room(item, qty))) {
       setNote("missing");
       return;
     }
     const results = lines.map(([id, qty, variantId]) => onAdd(id, qty, variantId));
-    setNote(results.length > 0 && results.every((item) => item === "added") ? "added" : "missing");
+    const added = results.length > 0 && results.every((item) => item === "added");
+    if (added) {
+      const saved: Record<string, number> = {};
+      for (const [id, qty, variantId] of lines) saved[lineKey(id, variantId)] = (saved[lineKey(id, variantId)] ?? 0) + qty;
+      const next = { ...cart };
+      for (const [key, qty] of Object.entries(saved)) next[key] = (next[key] ?? 0) + qty;
+      const same = Object.keys(next).length === Object.keys(saved).length && Object.entries(saved).every(([key, qty]) => next[key] === qty);
+      if (same) saveSetBundle({ offerId: offer.id, price: offer.price, lines: saved });
+    }
+    setNote(added ? "added" : "missing");
   }
 
   if (!offer) {
@@ -211,7 +224,7 @@ export function SetBuilder({
           <legend>{t("set.brand")}</legend>
           <div className="set-swatches" role="radiogroup" aria-label={t("set.brand")}>
             {liquids.map((item) => (
-              <button key={item.id} type="button" role="radio" aria-checked={item.id === brand?.id} className={item.id === brand?.id ? "set-swatch is-on" : "set-swatch"} onClick={() => { setBrandId(item.id); setFlavorIds([]); setNote(null); }}>
+              <button key={item.id} type="button" role="radio" aria-checked={item.id === brand?.id} className={item.id === brand?.id ? "set-swatch is-on" : "set-swatch"} onClick={() => { setBrandId(item.id); setNote(null); }}>
                 {lineTitle(item)}
               </button>
             ))}
@@ -221,10 +234,19 @@ export function SetBuilder({
       {brand ? (
         <fieldset className="set-step">
           <legend>{t("set.flavors")}</legend>
+          {picked.length ? (
+            <div className="set-swatches" aria-label={t("set.picked", { have: picked.length, need: offer.liquids })}>
+              {picked.map((item) => (
+                <button key={item.productId + item.id} type="button" className="set-swatch is-on" onClick={() => toggleFlavor(item)}>
+                  {liquids.length > 1 ? `${item.brandTitle} · ${item.label}` : item.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
           {flavors.length ? (
             <div className="set-checks" role="group" aria-label={t("set.flavors")}>
               {flavors.map((item) => (
-                <button key={item.productId + item.id} type="button" role="checkbox" aria-checked={flavorIds.includes(item.id)} className={flavorIds.includes(item.id) ? "set-check is-on" : "set-check"} onClick={() => toggleFlavor(item.id)}>
+                <button key={item.productId + item.id} type="button" role="checkbox" aria-checked={flavorPicks.some((pick) => samePick(item, pick))} className={flavorPicks.some((pick) => samePick(item, pick)) ? "set-check is-on" : "set-check"} onClick={() => toggleFlavor(item)}>
                   {item.label}
                 </button>
               ))}
@@ -233,7 +255,8 @@ export function SetBuilder({
         </fieldset>
       ) : null}
       <div className="set-dock">
-        <p className="set-count">{status()}</p>
+        <p className="set-count">{t("set.picked", { have: picked.length, need: offer.liquids })}</p>
+        {status() ? <p className="set-note">{status()}</p> : null}
         <button type="button" className="btn btn-primary" disabled={!ready} onClick={add}>{t("set.add")} · {euro(offer.price)}</button>
         {note ? <p className="set-note" role="status">{t(note === "added" ? "set.added" : "set.missing")}</p> : null}
       </div>

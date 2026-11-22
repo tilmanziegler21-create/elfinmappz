@@ -6,6 +6,7 @@ import { api, todayDate, type ApiCourier, type AuthPhase, type SessionUser } fro
 import { courierChatLink } from "./telegram";
 import { cartTitle, orderNumber } from "./lineLabel";
 import { priceCart, euro } from "./products";
+import { bundleOffer } from "./setBundle";
 import { tapSpring } from "./motion";
 import { moneyLocale, useI18n } from "./i18n";
 
@@ -120,6 +121,7 @@ export function CheckoutScreen({
           body: {
             city,
             promoCode: "",
+            setOffer: bundleOffer(cart)?.offerId || "",
             items: lines.map((line) => ({
               productId: line.variant.id,
               quantity: line.qty,
