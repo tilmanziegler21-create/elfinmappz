@@ -9,6 +9,11 @@ function fail(code, status) {
   return error;
 }
 
+function hasProductColumns(headers) {
+  const names = headers.map((header) => header.toLowerCase());
+  return ["sku", "name", "category", "brand", "price", "stock", "active"].every((name) => names.includes(name));
+}
+
 export async function readHamburgSources() {
   if (cache && cache.until > Date.now()) return cache.data;
   let titles;
@@ -22,25 +27,27 @@ export async function readHamburgSources() {
   if (!report.ready) throw fail("SHEETS_HH_MISSING", 503);
   const expected = sheetTabs().filter((name) => /^(products|LiquidPrices|couriers)_/.test(name));
   const primaryProducts = expected.find((name) => name.startsWith("products_"));
-  const productTitles = [primaryProducts, ...titles.filter((name) => /^products_/i.test(name) && name !== primaryProducts)].filter(Boolean);
-  const [productSheets, pricesSheet, couriersSheet] = await Promise.all([
-    Promise.all(productTitles.map((title) => readTab(title))),
-    readTab(expected.find((name) => name.startsWith("LiquidPrices_"))),
-    readTab(expected.find((name) => name.startsWith("couriers_"))),
-  ]);
+  const titled = await Promise.all(titles.map(async (title) => ({ title, sheet: await readTab(title) })));
+  const productSheets = titled
+    .filter((item) => hasProductColumns(item.sheet.headers))
+    .sort((a, b) => Number(b.title === primaryProducts) - Number(a.title === primaryProducts))
+    .map((item) => item.sheet);
+  const pricesSheet = titled.find((item) => item.title === expected.find((name) => name.startsWith("LiquidPrices_")))?.sheet;
+  const couriersSheet = titled.find((item) => item.title === expected.find((name) => name.startsWith("couriers_")))?.sheet;
+  if (!productSheets.length || !pricesSheet || !couriersSheet) throw fail("SHEETS_INVALID", 422);
   const products = normalizeProducts(productSheets[0]);
   const prices = normalizePrices(pricesSheet);
   const couriers = normalizeCouriers(couriersSheet);
   if (products.issues.some((item) => item.code === "MISSING_COLUMN")) throw fail("SHEETS_INVALID", 422);
-  const rejectedSku = new Set(products.issues.filter((item) => item.level === "error" && item.sku).map((item) => item.sku));
-  const seen = new Set(products.products.map((item) => item.sku));
-  for (const sheet of productSheets.slice(1)) {
-    const extra = normalizeProducts(sheet);
-    if (extra.issues.some((item) => item.code === "MISSING_COLUMN")) continue;
-    const rejected = new Set(extra.issues.filter((item) => item.level === "error" && item.sku).map((item) => item.sku));
-    for (const item of extra.products) {
+  const seen = new Set();
+  const kept = [];
+  for (const [index, sheet] of productSheets.entries()) {
+    const parsed = index === 0 ? products : normalizeProducts(sheet);
+    if (parsed.issues.some((item) => item.code === "MISSING_COLUMN")) continue;
+    const rejected = new Set(parsed.issues.filter((item) => item.level === "error" && item.sku).map((item) => item.sku));
+    for (const item of parsed.products) {
       if (!item.active || !item.sku || seen.has(item.sku) || rejected.has(item.sku)) continue;
-      products.products.push(item);
+      kept.push(item);
       seen.add(item.sku);
     }
   }
@@ -53,7 +60,7 @@ export async function readHamburgSources() {
   const activeIndex = courierHeaders.indexOf("active");
   const inactive = activeIndex < 0 ? 0 : couriersSheet.rows.filter((row) => ["false", "0", "no", "n", "нет"].includes(String(row[activeIndex] ?? "").trim().toLowerCase())).length;
   const data = {
-    products: products.products.filter((item) => item.active && item.sku && !rejectedSku.has(item.sku)),
+    products: kept,
     prices,
     couriers: keptCouriers,
     courierSheet: {

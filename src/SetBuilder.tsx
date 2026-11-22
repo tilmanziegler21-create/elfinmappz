@@ -2,16 +2,29 @@ import { useMemo, useState } from "react";
 import { lineTitle } from "./catalogLine";
 import { isPodCategory } from "./categoryRules";
 import { useI18n } from "./i18n";
+import { mediaByBrand } from "./productMedia";
 import { euro, type Product, type Variant } from "./products";
 
 type AddResult = "added" | "limit" | "unavailable";
+type Choice = Variant & { image?: string };
 
 const steps = ["model", "color", "brand", "flavors"] as const;
 
-function openChoices(product: Product) {
+function picture(product: Product | null) {
+  if (!product) return "";
+  return product.catalogImage || mediaByBrand(lineTitle(product))?.image || mediaByBrand(product.brand || "")?.image || "";
+}
+
+function openChoices(product: Product, image?: string): Choice[] {
   return product.variants
     .filter((item) => item.availability !== "out" && item.stock > 0)
-    .map((item) => ({ ...item, label: item.label === "—" ? lineTitle(product) : item.label }));
+    .map((item) => ({ ...item, image, label: item.label === "—" ? lineTitle(product) : item.label }));
+}
+
+function Shot({ src, alt }: { src?: string; alt: string }) {
+  const [ready, setReady] = useState(false);
+  if (!src) return <span className="set-shot-empty" aria-hidden="true" />;
+  return <img className={ready ? "is-in" : ""} src={src} alt={alt} draggable={false} onLoad={() => setReady(true)} />;
 }
 
 export function SetBuilder({
@@ -33,8 +46,10 @@ export function SetBuilder({
   const [note, setNote] = useState<"added" | "missing" | null>(null);
   const model = devices.find((item) => item.id === modelId) ?? null;
   const brand = liquids.find((item) => item.id === brandId) ?? null;
-  const colors = useMemo(() => (model ? openChoices(model) : []), [model]);
-  const flavors = useMemo(() => (brand ? openChoices(brand) : []), [brand]);
+  const modelShot = picture(model);
+  const brandShot = picture(brand);
+  const colors = useMemo(() => (model ? openChoices(model, modelShot) : []), [model, modelShot]);
+  const flavors = useMemo(() => (brand ? openChoices(brand, brandShot) : []), [brand, brandShot]);
   const color = colors.find((item) => item.id === colorId) ?? null;
   const picked = flavors.filter((item) => flavorIds.includes(item.id));
   const sum = (color?.price ?? 0) + picked.reduce((total, item) => total + item.price, 0);
@@ -71,12 +86,12 @@ export function SetBuilder({
     setNote(results.every((item) => item === "added") ? "added" : "missing");
   }
 
-  const choices: Variant[] = current === "model"
-    ? devices.map((item) => ({ id: item.id, label: lineTitle(item), price: item.price, availability: item.availability, stock: item.variants.reduce((sumStock, variant) => sumStock + variant.stock, 0) }))
+  const choices: Choice[] = current === "model"
+    ? devices.map((item) => ({ id: item.id, label: lineTitle(item), price: item.price, availability: item.availability, stock: item.variants.reduce((sumStock, variant) => sumStock + variant.stock, 0), image: picture(item) }))
     : current === "color"
       ? colors
       : current === "brand"
-        ? liquids.map((item) => ({ id: item.id, label: lineTitle(item), price: item.price, availability: item.availability, stock: item.variants.reduce((sumStock, variant) => sumStock + variant.stock, 0) }))
+        ? liquids.map((item) => ({ id: item.id, label: lineTitle(item), price: item.price, availability: item.availability, stock: item.variants.reduce((sumStock, variant) => sumStock + variant.stock, 0), image: picture(item) }))
         : flavors;
   const selected = current === "model" ? modelId : current === "color" ? colorId : current === "brand" ? brandId : "";
   const empty = current === "model" || current === "color" ? t("set.noDevice") : t("set.noLiquid");
@@ -84,13 +99,18 @@ export function SetBuilder({
   return (
     <div className="set-build">
       <p className="set-lead">{t("set.progress", { step: step + 1, total: steps.length })}</p>
-      <p className="set-lead">{t("set.pick")}</p>
-      {model ? <p className="set-note">{t("set.model")}: {lineTitle(model)}{color ? ` · ${color.label}` : ""}</p> : null}
-      {brand ? <p className="set-note">{t("set.brand")}: {lineTitle(brand)}{picked.length ? ` · ${picked.map((item) => item.label).join(", ")}` : ""}</p> : null}
+      {(modelShot || brandShot) ? (
+        <div className="set-preview" aria-hidden="true">
+          <figure><Shot src={modelShot} alt="" /></figure>
+          <figure><Shot src={brandShot} alt="" /></figure>
+        </div>
+      ) : null}
+      {model ? <p className="set-note">{lineTitle(model)}{color ? ` · ${color.label}` : ""}</p> : null}
+      {brand ? <p className="set-note">{lineTitle(brand)}{picked.length ? ` · ${picked.map((item) => item.label).join(", ")}` : ""}</p> : null}
       <fieldset className="set-step">
         <legend>{t(`set.${current}`)}</legend>
         {choices.length ? (
-          <div className="cat-chips" role={current === "flavors" ? "group" : "radiogroup"} aria-label={t(`set.${current}`)}>
+          <div className="set-choices" role={current === "flavors" ? "group" : "radiogroup"} aria-label={t(`set.${current}`)}>
             {choices.map((item) => {
               const on = current === "flavors" ? flavorIds.includes(item.id) : item.id === selected;
               return (
@@ -99,7 +119,7 @@ export function SetBuilder({
                   type="button"
                   role={current === "flavors" ? "checkbox" : "radio"}
                   aria-checked={on}
-                  className={on ? "cat-chip is-on" : "cat-chip"}
+                  className={on ? "set-choice is-on" : "set-choice"}
                   onClick={() => {
                     if (current === "model") pickModel(item.id);
                     else if (current === "color") pickColor(item.id);
@@ -107,7 +127,9 @@ export function SetBuilder({
                     else toggleFlavor(item.id);
                   }}
                 >
-                  {item.label}
+                  <span className="set-choice-art"><Shot src={item.image} alt="" /></span>
+                  <span className="set-choice-name">{item.label}</span>
+                  {current === "model" || current === "brand" ? <span className="set-choice-price">{euro(item.price)}</span> : null}
                 </button>
               );
             })}
