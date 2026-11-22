@@ -71,7 +71,7 @@
   "catalog.out": "Out of stock",
   "catalog.demo": "Demo",
   "catalog.failTitle": "Catalog did not load",
-  "catalog.failText": "Hamburg tabs were not found in the sheet. Data from another city is not shown.",
+  "catalog.failText": "Hamburg tabs were not found in the sheet.",
   "catalog.emptyTitle": "The catalog is empty",
   "catalog.emptyText": "Available items will appear here after the range is updated.",
   "catalog.refresh": "Refresh",

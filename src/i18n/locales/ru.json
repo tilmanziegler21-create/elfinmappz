@@ -71,7 +71,7 @@
   "catalog.out": "Нет в наличии",
   "catalog.demo": "Демо",
   "catalog.failTitle": "Каталог не загрузился",
-  "catalog.failText": "Вкладки Hamburg в таблице не найдены. Данные другого города не показываются.",
+  "catalog.failText": "Вкладки Hamburg в таблице не найдены.",
   "catalog.emptyTitle": "Каталог пока пуст",
   "catalog.emptyText": "Доступные позиции появятся здесь после обновления ассортимента.",
   "catalog.refresh": "Обновить",

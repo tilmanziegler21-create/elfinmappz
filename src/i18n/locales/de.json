@@ -71,7 +71,7 @@
   "catalog.out": "Nicht vorrätig",
   "catalog.demo": "Demo",
   "catalog.failTitle": "Katalog nicht geladen",
-  "catalog.failText": "Hamburg-Reiter wurden in der Tabelle nicht gefunden. Daten einer anderen Stadt werden nicht gezeigt.",
+  "catalog.failText": "Hamburg-Reiter wurden in der Tabelle nicht gefunden.",
   "catalog.emptyTitle": "Der Katalog ist noch leer",
   "catalog.emptyText": "Verfügbare Artikel erscheinen hier nach der Aktualisierung.",
   "catalog.refresh": "Aktualisieren",

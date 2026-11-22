@@ -27,7 +27,7 @@ import {
 import { clearHamburgCache, readHamburgSources } from "./hhRead.js";
 import { hhTabReport, listSheetTitles, loadServiceAccount, sheetCode, sheetTabs, spreadsheetMeta } from "./sheetsRead.js";
 import { withMedia } from "./productMedia.js";
-import { allocateSet, setAvailable, setRecipe } from "./sets.js";
+import { allocateSet, partKind, setAvailable, setRecipe } from "./sets.js";
 import { bindNoticeRecipient, enqueueNotice, telegramTestMode, trySendNotice } from "./notices.js";
 import { allocateDisplayNumbers } from "./pgState.js";
 import { customerHandle, formatLine, orderNumber } from "./lineLabel.js";
@@ -39,9 +39,10 @@ import { courierSlots } from "./slots.js";
 const PORT = Number(process.env.PORT || 8787);
 const CITY = String(process.env.CITY_CODE || "HH").trim();
 const CITY_NAME = String(process.env.CITY_NAME || "Hamburg").trim();
-const BLOCKED_CITIES = new Set(["FFM", "HG", "MU"]);
-const ALLOWED = new Set(String(process.env.CITY_CODES || CITY).split(",").map((item) => item.trim()).filter(Boolean));
-if (process.env.NODE_ENV !== "test" && BLOCKED_CITIES.has(CITY)) {
+const ALLOWED = new Set(process.env.NODE_ENV === "test"
+  ? String(process.env.CITY_CODES || CITY).split(",").map((item) => item.trim()).filter(Boolean)
+  : ["HH"]);
+if (process.env.NODE_ENV !== "test" && CITY !== "HH") {
   throw new Error("CITY_CODE must be HH");
 }
 const JWT_SECRET = String(process.env.JWT_SECRET || (process.env.NODE_ENV === "production" ? "" : "elfin-dev-secret"));
@@ -116,7 +117,8 @@ app.use((req, res, next) => {
 
 function cityOf(value) {
   const city = String(value || "").trim();
-  if (!city || BLOCKED_CITIES.has(city) || !ALLOWED.has(city)) return null;
+  if (city !== "HH" && process.env.NODE_ENV !== "test") return null;
+  if (!city || !ALLOWED.has(city)) return null;
   return city;
 }
 
@@ -179,8 +181,13 @@ function shownStock(raw, products) {
   });
 }
 
+function hhRow(row) {
+  if (partKind(row) !== "cartridge") return row;
+  return { ...row, price: 5 };
+}
+
 function withSets(products) {
-  const rows = products || [];
+  const rows = (products || []).map(hhRow);
   if (rows.some((item) => String(item.brand || "").toUpperCase().includes("НАБОР"))) return rows;
   const freeOf = (sku) => partFree(rows, sku);
   const setRows = setOffer.map(([number, name, price, oldPrice]) => {
