@@ -1,10 +1,10 @@
 {
-  "set-1": { "sku": "", "image": "/assets/products/sets/set-1.jpg", "imageType": "photo", "scene": "static-product", "accent": "frost", "category": "sets" },
-  "set-2": { "sku": "", "image": "/assets/products/sets/set-2.jpg", "imageType": "photo", "scene": "static-product", "accent": "frost", "category": "sets" },
-  "set-3": { "sku": "", "image": "/assets/products/sets/set-3.jpg", "imageType": "photo", "scene": "static-product", "accent": "frost", "category": "sets" },
-  "set-4": { "sku": "", "image": "/assets/products/sets/set-4.jpg", "imageType": "photo", "scene": "static-product", "accent": "frost", "category": "sets" },
-  "set-5": { "sku": "", "image": "/assets/products/sets/set-5.jpg", "imageType": "photo", "scene": "static-product", "accent": "frost", "category": "sets" },
-  "set-6": { "sku": "", "image": "/assets/products/sets/set-6.jpg", "imageType": "photo", "scene": "static-product", "accent": "frost", "category": "sets" },
+  "set-1": { "sku": "", "image": "/assets/products/sets/set-1-light.jpg", "imageType": "photo", "scene": "static-product", "accent": "frost", "category": "sets" },
+  "set-2": { "sku": "", "image": "/assets/products/sets/set-2-light.jpg", "imageType": "photo", "scene": "static-product", "accent": "frost", "category": "sets" },
+  "set-3": { "sku": "", "image": "/assets/products/sets/set-3-light.jpg", "imageType": "photo", "scene": "static-product", "accent": "frost", "category": "sets" },
+  "set-4": { "sku": "", "image": "/assets/products/sets/set-4-light.jpg", "imageType": "photo", "scene": "static-product", "accent": "frost", "category": "sets" },
+  "set-5": { "sku": "", "image": "/assets/products/sets/set-5-light.jpg", "imageType": "photo", "scene": "static-product", "accent": "frost", "category": "sets" },
+  "set-6": { "sku": "", "image": "/assets/products/sets/set-6-light.jpg", "imageType": "photo", "scene": "static-product", "accent": "frost", "category": "sets" },
   "puffy-berry-cherry": {
     "sku": "",
     "image": "/assets/products/liquids/puffy-berry-cherry.png",

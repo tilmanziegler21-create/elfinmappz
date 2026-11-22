@@ -23,6 +23,8 @@ import {
 import { tapSpring } from "./motion";
 import { readSaved, SAVED_EVENT, writeSaved } from "./saved";
 import { moneyLocale, useI18n } from "./i18n";
+import { setNumberOf, setShot } from "./setCopy";
+import { useTheme } from "./theme";
 
 type AddResult = "added" | "limit" | "unavailable";
 
@@ -46,6 +48,7 @@ export function ProductScreen({
   const [variantId, setVariantId] = useState<string | null>(product ? defaultVariant(product)?.id ?? null : null);
   const [qty, setQty] = useState(1);
   const { t, lang } = useI18n();
+  const { theme } = useTheme();
   const money = moneyLocale(lang);
   const [note, setNote] = useState<"added" | "limit" | "out" | null>(null);
   const [sheet, setSheet] = useState(false);
@@ -112,7 +115,8 @@ export function ProductScreen({
   const flavorChoice = current.variants.some((item) => item.label !== "—" && !/\d+\s*мл/i.test(item.label))
     && !current.variants.some((item) => /\d+\s*мл/i.test(item.label));
   const media = (variant ? mediaBySku(variant.id) : null) ?? mediaFor(current.id) ?? mediaBySku(current.id) ?? mediaByBrand(lineTitle(current));
-  const heroImage = media?.image ?? current.heroImage;
+  const setNo = setNumberOf(current);
+  const heroImage = setNo ? setShot(setNo, theme) : (media?.image ?? current.heroImage);
   const preset = media?.scene ?? (current.id === "elfliq-watermelon" ? "liquid-float" as const : undefined);
   const accent = media?.accent ?? (current.id === "elfliq-watermelon" ? "melon" as const : undefined);
   const inCart = variant ? cart[lineKey(product.id, variant.id)] ?? 0 : 0;
@@ -169,9 +173,9 @@ export function ProductScreen({
         </motion.div>
 
         <div className="product-copy">
-          <p className="product-kicker">{flavorChoice ? (variant?.label ?? current.flavor) : current.flavor}</p>
+          <p className="product-kicker">{setNo ? t(`set.${setNo}.line`) : flavorChoice ? (variant?.label ?? current.flavor) : current.flavor}</p>
           <div className="product-title-row">
-            <h2 className="product-heading">{current.name}</h2>
+            <h2 className="product-heading">{setNo ? t(`set.${setNo}.title`) : current.name}</h2>
             <button
               type="button"
               className={saved.includes(current.id) ? "save-btn is-on" : "save-btn"}

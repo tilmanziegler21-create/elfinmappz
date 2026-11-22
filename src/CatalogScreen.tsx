@@ -9,6 +9,8 @@ import { euro, products, stockLine, unitsFor, type Product } from "./products";
 import { cardItem, cardList, tapSpring } from "./motion";
 import { readSaved, SAVED_EVENT, writeSaved } from "./saved";
 import { useI18n } from "./i18n";
+import { setNumberOf, setShot } from "./setCopy";
+import { useTheme } from "./theme";
 
 const sections = ["Все", "Жидкости", "Наборы", "POD", "Устройства"] as const;
 
@@ -268,6 +270,7 @@ function ProductGrid({
   reduce: boolean;
 }) {
   const { t } = useI18n();
+  const { theme } = useTheme();
   return (
     <motion.div className="shelf" initial={reduce ? false : "hidden"} animate="show" variants={cardList}>
       {items.map((item) => {
@@ -286,7 +289,7 @@ function ProductGrid({
             onClick={() => onOpen(item.id)}
           >
             <div className="product-art">
-              <ProductArt item={item} />
+              <ProductArt item={item} theme={theme} />
               <motion.button
                 type="button"
                 className={liked ? "card-heart is-on" : "card-heart"}
@@ -303,8 +306,8 @@ function ProductGrid({
                 <HeartIcon filled={liked} />
               </motion.button>
             </div>
-            <h3 className="product-name">{lineTitle(item)}</h3>
-            <p className="product-flavor">{item.flavor}</p>
+            <h3 className="product-name">{setNumberOf(item) ? t(`set.${setNumberOf(item)}.title`) : lineTitle(item)}</h3>
+            <p className="product-flavor">{setNumberOf(item) ? t(`set.${setNumberOf(item)}.line`) : item.flavor}</p>
             <p className="product-price">
               <strong>{demo ? "—" : euro(item.price)}</strong>
               {!demo && item.oldPrice ? <s>{euro(item.oldPrice)}</s> : null}
@@ -331,7 +334,9 @@ function ProductGrid({
   );
 }
 
-function ProductArt({ item }: { item: Product }) {
+function ProductArt({ item, theme }: { item: Product; theme: "light" | "dark" }) {
+  const number = setNumberOf(item);
+  const src = number ? setShot(number, theme) : item.catalogImage;
   const { t } = useI18n();
   const [failed, setFailed] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -339,8 +344,8 @@ function ProductArt({ item }: { item: Product }) {
   useEffect(() => {
     const node = image.current;
     if (node?.complete && node.naturalWidth > 0) setLoaded(true);
-  }, [item.catalogImage]);
-  if (!item.catalogImage || failed) {
+  }, [src]);
+  if (!src || failed) {
     return (
       <span className="mark-fallback">
         <span className="mark" aria-hidden="true" />
@@ -352,7 +357,7 @@ function ProductArt({ item }: { item: Product }) {
     <img
       ref={image}
       className={loaded ? "product-photo is-in" : "product-photo"}
-      src={item.catalogImage}
+      src={src}
       alt=""
       decoding="async"
       onLoad={() => setLoaded(true)}

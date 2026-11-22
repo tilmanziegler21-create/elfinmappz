@@ -182,7 +182,7 @@ function withSets(products) {
       oldPrice,
       stock,
       active: true,
-      image: `/assets/products/sets/set-${number}.jpg`,
+      image: `/assets/products/sets/set-${number}-light.jpg`,
     };
   });
   return [...setRows, ...rows];

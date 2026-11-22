@@ -20,6 +20,7 @@ import { CART_KEY, clampLineQty, defaultVariant, euro, findProduct, lineKey, pro
 import { sectionItem, sectionList, tapSpring } from "./motion";
 import { prewarmImages } from "./ImagePreloader";
 import { languageName, languages, useI18n, type Lang } from "./i18n";
+import { setDevice, setNumberOf, setShot } from "./setCopy";
 import { useTheme } from "./theme";
 
 type Screen = "home" | "catalog" | "cart" | "orders" | "profile" | "checkout" | "courier" | "admin";
@@ -539,6 +540,7 @@ export function App() {
                 <Home
                   onOpen={showScreen}
                   onProduct={openProduct}
+                  onAdd={(id) => { addToCart(id); }}
                   shelf={catalogMode === "live" ? liveProducts.filter((item) => shopSection(item.category) !== "Наборы").slice(0, 4) : []}
                   liquids={catalogMode === "live" ? liveProducts.filter((item) => item.category.trim().toLowerCase() === "liquids" || item.category.trim().toLowerCase() === "liquids1") : []}
                   sets={catalogMode === "live" ? liveProducts.filter((item) => shopSection(item.category) === "Наборы") : []}
@@ -720,9 +722,84 @@ function Press({
   );
 }
 
+function SetBoard({
+  sets,
+  theme,
+  onOpen,
+  onAdd,
+}: {
+  sets: Product[];
+  theme: "light" | "dark";
+  onOpen: (id: string) => void;
+  onAdd: (id: string) => void;
+}) {
+  const { t } = useI18n();
+  const best = sets.reduce((max, item) => Math.max(max, (item.oldPrice ?? item.price) - item.price), 0);
+  return (
+    <div className="set-board">
+      <section className="set-hero">
+        <div>
+          <h2>{t("home.sets")}</h2>
+          <p>{t("set.lead")}</p>
+        </div>
+        <img src={setDevice(theme)} alt="" />
+      </section>
+      <ul className="set-points">
+        <li><GiftMark />{t("set.benefit", { sum: compactEuro(best) })}</li>
+        <li><ShieldMark />{t("set.original")}</li>
+        <li><BoltMark />{t("set.ready")}</li>
+      </ul>
+      <div className="set-grid">
+        {sets.map((item) => {
+          const number = setNumberOf(item);
+          const save = Math.max(0, (item.oldPrice ?? item.price) - item.price);
+          const closed = item.availability === "out";
+          return (
+            <article key={item.id} className="offer-card">
+              <button type="button" className="offer-open" onClick={() => onOpen(item.id)}>
+                <img src={number ? setShot(number, theme) : item.catalogImage} alt="" />
+                <strong>{number ? t(`set.${number}.title`) : lineTitle(item)}</strong>
+                <span>{number ? t(`set.${number}.line`) : item.flavor}</span>
+                <b>{euro(item.price)}</b>
+              </button>
+              <div className="offer-row">
+                {save > 0 ? <em>{t("home.save", { sum: compactEuro(save) })}</em> : <em />}
+                <button type="button" className="offer-cart" aria-label={t("catalog.add")} disabled={closed} onClick={() => onAdd(item.id)}>
+                  <CartMark />
+                </button>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function compactEuro(value: number) {
+  return Number.isInteger(value) ? `${value} €` : euro(value);
+}
+
+function GiftMark() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10h16v9H4zM3 7h18v3H3zM12 7v12M12 7c-2 0-3.5-2-2.2-3.2C11 2.6 12 4.5 12 7Zm0 0c2 0 3.5-2 2.2-3.2C13 2.6 12 4.5 12 7Z" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>;
+}
+
+function ShieldMark() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v6c0 4.2 2.8 7 7 9 4.2-2 7-4.8 7-9V6Z" fill="none" stroke="currentColor" strokeWidth="1.6" /><path d="m8.5 12 2.2 2.2 4.3-4.4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>;
+}
+
+function BoltMark() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 3 5 14h6l-1 7 8-11h-6Z" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>;
+}
+
+function CartMark() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h1.4l1.6 9h9.2l1.6-6H8" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /><circle cx="10" cy="19" r="1.2" fill="currentColor" /><circle cx="17" cy="19" r="1.2" fill="currentColor" /></svg>;
+}
+
 function Home({
   onOpen,
   onProduct,
+  onAdd,
   shelf,
   liquids,
   sets,
@@ -730,6 +807,7 @@ function Home({
 }: {
   onOpen: (screen: Screen) => void;
   onProduct: (id: string, qty?: number) => void;
+  onAdd: (id: string) => void;
   shelf: Product[];
   liquids: Product[];
   sets: Product[];
@@ -889,22 +967,7 @@ function Home({
             <span className="home-all">{t("home.setsAll")}</span>
           </button>
         ) : (
-          <motion.div className="catalog home-vitrine" variants={sectionItem}>
-            <div className="shelf">
-              {sets.map((item) => (
-                <button key={item.id} type="button" className="product home-card" data-kind="set" onClick={() => onProduct(item.id)}>
-                  <HomeArt item={item} />
-                  <span className="product-name">{lineTitle(item)}</span>
-                  <span className="product-flavor">{item.flavor}</span>
-                  <span className="product-price">
-                    <strong>{euro(item.price)}</strong>
-                    {item.oldPrice ? <s>{euro(item.oldPrice)}</s> : null}
-                  </span>
-                  {item.oldPrice && item.oldPrice > item.price ? <em className="hit-save">{t("home.save", { sum: euro(item.oldPrice - item.price) })}</em> : null}
-                </button>
-              ))}
-            </div>
-          </motion.div>
+          <SetBoard sets={sets} theme={theme} onOpen={onProduct} onAdd={onAdd} />
         )
       ) : null}
       {focus === "home" ? (
