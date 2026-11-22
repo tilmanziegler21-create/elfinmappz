@@ -108,6 +108,7 @@ export function evaluatePromo(promo, amount, promos) {
 
 export function priceOrder(items, liquidPrices, promoCode, user, promos) {
   const base = calculateOrderPricing(items, liquidPrices);
+  if (!Number.isFinite(base.subtotal) || base.subtotal <= 0) return { ok: false, error: "INVALID_ORDER" };
   if (base.ambiguous) return { ok: false, error: "PRICE_RULES_AMBIGUOUS" };
   let discount = base.discount;
   let amount = Math.max(0, base.subtotal - discount);

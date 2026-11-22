@@ -942,7 +942,7 @@ function Home({
           <div className={focus === "hits" ? "hit-list" : "shelf"}>
             {(focus === "hits" ? hits : hits.slice(0, 2)).map((hit) => (
               <button key={hit.id} type="button" className="hit-card" onClick={() => onProduct(hit.item.id, hit.step.qty)}>
-                <HomeArt item={hit.item} />
+                <HomeArt item={hit.item} theme={theme} />
                 <span className="hit-copy">
                   <span className="product-name">{hit.step.qty} {lineTitle(hit.item)}</span>
                   <span className="product-flavor">{hit.item.flavor}</span>
@@ -978,8 +978,8 @@ function Home({
         </div>
         <div className="shelf">
           {cards.map((item) => (
-            <button key={item.id} type="button" className="product home-card" onClick={() => onProduct(item.id)}>
-              <HomeArt item={item} />
+            <button key={item.id} type="button" className="product home-card" data-kind={setNumberOf(item) ? "set" : undefined} onClick={() => onProduct(item.id)}>
+              <HomeArt item={item} theme={theme} />
               <span className="product-name">{lineTitle(item)}</span>
               <span className="product-flavor">{item.flavor}</span>
               <span className="product-price"><strong>{live ? euro(item.price) : "—"}</strong></span>
@@ -1031,16 +1031,19 @@ function GlobeMark() {
   );
 }
 
-function HomeArt({ item }: { item: Product }) {
+function HomeArt({ item, theme }: { item: Product; theme: "light" | "dark" }) {
   const { t } = useI18n();
+  const number = setNumberOf(item);
+  const src = number ? setShot(number, theme) : item.catalogImage;
   const [failed, setFailed] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const image = useRef<HTMLImageElement>(null);
   useEffect(() => {
+    setFailed(false);
     const node = image.current;
     if (node?.complete && node.naturalWidth > 0) setLoaded(true);
-  }, [item.catalogImage]);
-  if (!item.catalogImage || failed) {
+  }, [src]);
+  if (!src || failed) {
     return (
       <span className="product-art">
         <span className="mark-fallback">
@@ -1055,7 +1058,7 @@ function HomeArt({ item }: { item: Product }) {
       <img
         ref={image}
         className={loaded ? "product-photo is-in" : "product-photo"}
-        src={item.catalogImage}
+        src={src}
         alt=""
         decoding="async"
         onLoad={() => setLoaded(true)}

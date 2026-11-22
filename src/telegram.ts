@@ -50,7 +50,7 @@ export function courierChatLink(target: { url?: string; start?: string } | null 
   const direct = String(target?.url || "");
   if (/^https:\/\/t\.me\/(?!\d+$)[A-Za-z0-9_]{5,32}$/.test(direct)) return direct;
   const start = String(target?.start || "");
-  if (!botUrl || !/^ord_[A-Za-z0-9_-]{1,40}$/.test(start)) return "";
+  if (!botUrl || !/^https:\/\/t\.me\/(?!\d+$)[A-Za-z0-9_]{5,32}$/.test(botUrl) || !/^ord_[A-Za-z0-9_-]{1,40}$/.test(start)) return "";
   return `${botUrl}?start=${encodeURIComponent(start)}`;
 }
 

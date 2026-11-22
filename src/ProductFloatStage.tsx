@@ -46,9 +46,10 @@ export function ProductFloatStage({
   const plan = plannedMode(image);
   const pending = Boolean(image) && !failed && plan === "detect" && detected === null;
   const mode = !image || failed ? "crystal" : pending || plan === "photo" || detected === false ? "photo" : "cutout";
+  const staticPhoto = preset === "static-product" || mode === "photo";
   const spec = preset ? scenePresets[preset] : null;
-  const float = !reduce && preset !== "static-product" && !pending && (mode === "crystal" || mode === "cutout");
-  const mist = accent === "melon" || accent === "frost";
+  const float = !reduce && !staticPhoto && !pending && (mode === "crystal" || mode === "cutout");
+  const mist = !staticPhoto && (accent === "melon" || accent === "frost");
   const drift = float && !lite && mist;
   const tilt = spec ? spec.tilt : productTilt.angle;
   const distance = spec ? spec.distance : productFloat.distance;
@@ -90,14 +91,16 @@ export function ProductFloatStage({
           transition={drift ? { duration: 9, repeat: Infinity, ease: "easeInOut" } : { duration: 0 }}
         />
       ) : null}
-      <motion.span
-        className="float-shadow"
-        aria-hidden="true"
-        animate={float
-          ? { scaleX: spec ? [1, 0.92, 1] : [1, 0.82, 1], opacity: spec ? [0.42, 0.26, 0.42] : [0.55, 0.28, 0.55] }
-          : { scaleX: 1, opacity: spec ? 0.34 : 0.4 }}
-        transition={float ? { duration, repeat: Infinity, ease: "easeInOut" } : { duration: 0 }}
-      />
+      {!staticPhoto ? (
+        <motion.span
+          className="float-shadow"
+          aria-hidden="true"
+          animate={float
+            ? { scaleX: spec ? [1, 0.92, 1] : [1, 0.82, 1], opacity: spec ? [0.42, 0.26, 0.42] : [0.55, 0.28, 0.55] }
+            : { scaleX: 1, opacity: spec ? 0.34 : 0.4 }}
+          transition={float ? { duration, repeat: Infinity, ease: "easeInOut" } : { duration: 0 }}
+        />
+      ) : null}
       <motion.div
         className="float-bob"
         animate={float ? { y: [0, -distance, 0] } : { y: 0 }}

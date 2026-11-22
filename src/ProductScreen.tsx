@@ -147,7 +147,7 @@ export function ProductScreen({
 
   return (
     <div className="product-page">
-      <ProductBar category={sectionLabel(current.category)} cartCount={cartTotal(cart)} onBack={leave} onCart={onCart} />
+      <ProductBar category={sectionTitle(sectionLabel(current.category), t)} cartCount={cartTotal(cart)} onBack={leave} onCart={onCart} />
       <div className="product-scroll">
         <motion.div
           className="hero-scene"
@@ -234,7 +234,7 @@ export function ProductScreen({
             {current.preview ? t("product.sample") : stockLine(t, remaining <= 0 ? "out" : remaining <= 2 ? "low" : "in", remaining)}
           </p>
           <button type="button" className="variant-trigger" aria-label={flavorChoice ? t("product.chooseFlavor") : t("product.chooseVolume")} onClick={() => setSheet(true)}>
-            <span>{variant?.label ?? t("product.choose")}</span>
+            <span>{setNo ? t(`set.${setNo}.line`) : (variant?.label ?? t("product.choose"))}</span>
             <strong>{current.preview || !variant ? "—" : euro(variant.price, money)}</strong>
           </button>
           <h3 className="section-label">{t("product.qty")}</h3>
@@ -268,7 +268,7 @@ export function ProductScreen({
           <h3 className="section-label">{t("product.specs")}</h3>
           <div className="facts">
             <div className="fact"><span>{t("product.category")}</span><strong>{sectionTitle(sectionLabel(current.category), t)}</strong></div>
-            <div className="fact"><span>{t("product.flavor")}</span><strong>{flavorChoice ? (variant?.label ?? "—") : current.flavor}</strong></div>
+            <div className="fact"><span>{t("product.flavor")}</span><strong>{setNo ? t(`set.${setNo}.line`) : flavorChoice ? (variant?.label ?? "—") : current.flavor}</strong></div>
             {flavorChoice ? null : <div className="fact"><span>{t("product.volume")}</span><strong>{variant?.label ?? "—"}</strong></div>}
           </div>
 
@@ -297,6 +297,7 @@ export function ProductScreen({
 function sectionTitle(value: string, t: (key: string) => string) {
   if (value === "Жидкости") return t("catalog.liquids");
   if (value === "Устройства") return t("catalog.devices");
+  if (value === "Наборы") return t("catalog.sets");
   return value;
 }
 

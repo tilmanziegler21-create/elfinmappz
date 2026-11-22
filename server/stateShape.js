@@ -14,6 +14,11 @@ function isRecord(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+function safeKey(key) {
+  const k = String(key ?? "");
+  return Boolean(k) && k !== "__proto__" && k !== "constructor" && k !== "prototype";
+}
+
 export function valueKind(value) {
   if (value == null) return "missing";
   if (Array.isArray(value)) return "array";
@@ -192,9 +197,13 @@ function mergeMove(remote, local) {
 }
 
 function mergeIdempotency(remote, local) {
-  const out = { ...(remote || {}) };
+  const out = {};
+  for (const [key, value] of Object.entries(remote || {})) {
+    if (safeKey(key)) out[key] = value;
+  }
   for (const [key, value] of Object.entries(local || {})) {
-    const prev = out[key];
+    if (!safeKey(key)) continue;
+    const prev = Object.hasOwn(out, key) ? out[key] : undefined;
     if (!prev) out[key] = value;
     else if (value?.payload && !prev.payload) out[key] = value;
     else if (prev.payload && !value?.payload) out[key] = prev;
@@ -262,8 +271,11 @@ function mergeProducts(remote, local) {
 function namedMap(remote, local, mergeFn) {
   const out = {};
   for (const key of new Set([...Object.keys(remote || {}), ...Object.keys(local || {})])) {
-    if (remote?.[key] && local?.[key]) out[key] = mergeFn(remote[key], local[key]);
-    else out[key] = { ...(remote?.[key] || local?.[key]) };
+    if (!safeKey(key)) continue;
+    const r = remote && Object.hasOwn(remote, key) ? remote[key] : undefined;
+    const l = local && Object.hasOwn(local, key) ? local[key] : undefined;
+    if (r && l) out[key] = mergeFn(r, l);
+    else out[key] = { ...(r || l) };
   }
   return out;
 }
@@ -327,7 +339,7 @@ export function expireReservationRecords(reservations, orders, now) {
   }
   const cancelled = [];
   for (const orderId of expired) {
-    const order = orders[orderId];
+    const order = safeKey(orderId) && Object.hasOwn(orders, orderId) ? orders[orderId] : null;
     if (!order) continue;
     if (order.stock_committed) continue;
     if (order.status !== "buffer" && order.status !== "pending") continue;

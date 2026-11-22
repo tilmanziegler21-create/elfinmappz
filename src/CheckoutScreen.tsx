@@ -204,7 +204,7 @@ export function CheckoutScreen({
         <p className="empty-text">{t("checkout.sum", { sum: euro(doneTotal, money) })}</p>
         {noticePending ? <p className="checkout-note">{t("checkout.notice")}</p> : null}
         <div className="empty-actions">
-          {writeHref ? <a className="btn btn-primary empty-cta" href={writeHref} target="_blank" rel="noreferrer">{t("checkout.write")}</a> : null}
+          {writeHref ? <a className="btn btn-primary empty-cta" href={writeHref} target="_blank" rel="noopener noreferrer">{t("checkout.write")}</a> : null}
           <button type="button" className="btn btn-ghost empty-cta" onClick={onOrders}>{t("checkout.myOrders")}</button>
           <button type="button" className="btn btn-ghost empty-cta" onClick={onHome || onCatalog}>{t("checkout.home")}</button>
         </div>
@@ -265,7 +265,7 @@ export function CheckoutScreen({
             <div className="fact"><span>Telegram ID</span><strong>{user.tgId}</strong></div>
           </div>
         ) : authPhase === "initializing" ? null : (
-          <p className="checkout-note">{authPhase === "expired" || authPhase === "error" || authFailed ? t("checkout.auth") : t("checkout.gate")}{botUrl ? <> <a href={botUrl}>{t("checkout.openTg")}</a></> : null}</p>
+          <p className="checkout-note">{authPhase === "expired" || authPhase === "error" || authFailed ? t("checkout.auth") : t("checkout.gate")}{botUrl && /^https:\/\/t\.me\/(?!\d+$)[A-Za-z0-9_]{5,32}$/.test(botUrl) ? <> <a href={botUrl} target="_blank" rel="noopener noreferrer">{t("checkout.openTg")}</a></> : null}</p>
         )}
         <div className="order-block">
           <label className={courierId ? "order-field is-set" : "order-field"}>

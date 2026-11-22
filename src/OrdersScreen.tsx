@@ -105,7 +105,7 @@ export function OrdersScreen({
                 {method ? <p>{method}</p> : null}
                 {order.courierId ? <p>{t("orders.courier", { name: courier?.name || order.courierId })}</p> : null}
                 {["pending", "assigned", "picked_up", "buffer"].includes(order.status) && courierChatLink(order.writeCourier, botUrl) ? (
-                  <a className="btn btn-ghost choice-btn" href={courierChatLink(order.writeCourier, botUrl)} target="_blank" rel="noreferrer">{t("checkout.write")}</a>
+                  <a className="btn btn-ghost choice-btn" href={courierChatLink(order.writeCourier, botUrl)} target="_blank" rel="noopener noreferrer">{t("checkout.write")}</a>
                 ) : null}
               </div>
             ) : null}

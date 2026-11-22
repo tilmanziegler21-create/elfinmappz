@@ -53,7 +53,14 @@ const REFERRAL_REQUIRED = Number(process.env.REFERRAL_REQUIRED || 2);
 const REFERRAL_BONUS = Number(process.env.REFERRAL_BONUS_AMOUNT || 20);
 
 const app = express();
-app.use(express.json());
+app.disable("x-powered-by");
+app.use(express.json({ limit: "64kb" }));
+
+function own(map, key) {
+  const id = String(key ?? "");
+  if (!id || id === "__proto__" || id === "constructor" || id === "prototype") return undefined;
+  return map && Object.hasOwn(map, id) ? map[id] : undefined;
+}
 
 function allowedOrigins() {
   const origins = new Set();
@@ -76,6 +83,9 @@ function allowedOrigins() {
 
 app.set("trust proxy", 1);
 app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
   const origin = String(req.headers.origin || "");
   if (origin && allowedOrigins().has(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
@@ -92,6 +102,11 @@ app.use((req, res, next) => {
   if (process.env.NODE_ENV === "test" || req.path === "/api/telegram/webhook") return next();
   const key = req.ip || "local";
   const now = Date.now();
+  if (rateBuckets.size > 4000) {
+    for (const [k, times] of rateBuckets) {
+      if (!times.length || now - times[times.length - 1] >= 60_000) rateBuckets.delete(k);
+    }
+  }
   const row = (rateBuckets.get(key) || []).filter((time) => now - time < 60_000);
   if (row.length >= 300) return res.status(429).json({ error: "RATE_LIMIT" });
   row.push(now);
@@ -220,7 +235,7 @@ function signUser(user) {
     error.status = 500;
     throw error;
   }
-  return jwt.sign({ tgId: user.tg_id }, JWT_SECRET, { expiresIn: "12h" });
+  return jwt.sign({ tgId: user.tg_id }, JWT_SECRET, { algorithm: "HS256", expiresIn: "12h" });
 }
 
 function publicUser(user) {
@@ -297,8 +312,8 @@ function requireAuth(req, res, next) {
     return res.status(401).json({ error: "Authentication required" });
   }
   try {
-    const payload = jwt.verify(header.slice(7), JWT_SECRET);
-    const user = db().users[String(payload.tgId)];
+    const payload = jwt.verify(header.slice(7), JWT_SECRET, { algorithms: ["HS256"] });
+    const user = own(db().users, payload?.tgId);
     if (!user) {
       logAuth(req, "USER_NOT_FOUND");
       return res.status(401).json({ error: "User not found" });
@@ -313,6 +328,11 @@ function requireAuth(req, res, next) {
 }
 
 function verifyInitData(initData) {
+  if (String(initData || "").length > 8192) {
+    const error = new Error("Invalid hash");
+    error.status = 401;
+    throw error;
+  }
   const botToken = String(process.env.TELEGRAM_BOT_TOKEN || "");
   if (!botToken) {
     const error = new Error("Bot token not configured");
@@ -375,7 +395,7 @@ function botUsername() {
 }
 
 function writeCourierFor(courier, orderId) {
-  const account = courier?.tg_id ? db().users[String(courier.tg_id)] : null;
+  const account = courier?.tg_id ? own(db().users, courier.tg_id) : null;
   const username = publicUsername(account?.username);
   const id = String(orderId || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 40);
   const target = {};
@@ -394,13 +414,21 @@ function syncRole(user) {
 }
 
 function ensureUser(tgId, username, firstName, lastName = "") {
-  const id = String(tgId);
-  if (!db().users[id]) {
+  const id = String(tgId || "").trim();
+  if (!/^\d{1,24}$/.test(id)) {
+    const error = new Error("Invalid user id");
+    error.status = 400;
+    throw error;
+  }
+  const safeUser = String(username || "").slice(0, 64);
+  const safeFirst = String(firstName || "").slice(0, 120);
+  const safeLast = String(lastName || "").slice(0, 120);
+  if (!Object.hasOwn(db().users, id)) {
     db().users[id] = {
       tg_id: id,
-      username: username || "",
-      first_name: firstName || "",
-      last_name: lastName || "",
+      username: safeUser,
+      first_name: safeFirst,
+      last_name: safeLast,
       status: "user",
       bonus_balance: 0,
       level_percent: 0,
@@ -412,9 +440,9 @@ function ensureUser(tgId, username, firstName, lastName = "") {
     };
   }
   const user = db().users[id];
-  if (firstName) user.first_name = firstName;
-  if (lastName) user.last_name = lastName;
-  user.username = username || "";
+  if (safeFirst) user.first_name = safeFirst;
+  if (safeLast) user.last_name = safeLast;
+  user.username = safeUser;
   return syncRole(user);
 }
 
@@ -684,7 +712,7 @@ function commitStock(order) {
 
 function reverseBonuses(order) {
   if (order.bonus_reversed) return;
-  const user = db().users[String(order.user_id)];
+  const user = own(db().users, order.user_id);
   if (user) {
     const spend = Number(order.bonus_applied || 0);
     const earn = Number(order.cashback_earned || 0);
@@ -692,7 +720,7 @@ function reverseBonuses(order) {
   }
   const referral = order.referral_bonus;
   if (referral?.tgId) {
-    const referrer = db().users[String(referral.tgId)];
+    const referrer = own(db().users, referral.tgId);
     if (referrer) {
       referrer.bonus_balance = money(Number(referrer.bonus_balance || 0) - Number(referral.amount || 0));
       referrer.referral_conversions = Math.max(0, Number(referrer.referral_conversions || 0) - Number(referral.conversions || 0));
@@ -756,7 +784,7 @@ function returnStock(order, reason) {
 
 function resumeStockMoves() {
   for (const move of db().stockMoves) {
-    const order = db().orders[move.order_id];
+    const order = own(db().orders, move.order_id);
     if (!order) continue;
     if (move.status === "pending" && move.type === "commit") commitStock(order);
     if (move.status === "pending" && move.type === "return") {
@@ -1040,7 +1068,7 @@ app.get("/api/config", (_req, res) => {
 
 app.post("/api/auth/dev", (req, res) => {
   if (!DEV_AUTH) return res.status(404).json({ error: "Not found" });
-  const user = db().users[String(req.body?.tgId || "")];
+  const user = own(db().users, req.body?.tgId);
   if (!user) return res.status(404).json({ error: "User not found" });
   persist();
   res.json({ token: signUser(user), user: publicUser(user), dev: true, city: CITY });
@@ -1141,15 +1169,15 @@ app.get("/api/couriers", async (req, res) => {
 app.post("/api/order/create", beginOrderTrace, refuseEphemeralOrders, requireAuth, async (req, res) => {
   const city = cityOf(req.body?.city);
   const items = req.body?.items;
-  if (!city || !Array.isArray(items) || items.length === 0) {
+  if (!city || !Array.isArray(items) || items.length === 0 || items.length > 50) {
     mark(req, "ORDER_VALIDATED", "INVALID_ORDER");
     return res.status(400).json({ error: "Invalid order data" });
   }
   if (!acceptState(res, req.orderTraceId)) return;
-  const headerKey = String(req.headers["idempotency-key"] || "").trim();
+  const headerKey = String(req.headers["idempotency-key"] || "").trim().slice(0, 128);
   const key = headerKey ? `${req.user.tg_id}:${headerKey}` : "";
   if (key) {
-    const existing = db().orderIdempotency[key];
+    const existing = own(db().orderIdempotency, key);
     if (existing && existing.expiresAt > Date.now() && existing.payload) {
       mark(req, "ORDER_PERSISTED", "replay");
       return res.json(existing.payload);
@@ -1175,8 +1203,18 @@ app.post("/api/order/create", beginOrderTrace, refuseEphemeralOrders, requireAut
   const stockRows = catalog.products.filter((row) => !setRecipe(row.sku));
   const freeOf = (sku) => partFree(stockRows, sku) - (claimed.get(sku) || 0);
   for (const item of items) {
-    const sku = String(item.productId || "");
+    if (!item || typeof item !== "object") {
+      if (key) delete db().orderIdempotency[key];
+      mark(req, "ORDER_VALIDATED", "INVALID_ORDER");
+      return res.status(400).json({ error: "Invalid order data" });
+    }
+    const sku = String(item.productId || "").trim().slice(0, 80);
     const qty = Number(item.quantity);
+    if (!sku || !Number.isInteger(qty) || qty < 1 || qty > 500) {
+      if (key) delete db().orderIdempotency[key];
+      mark(req, "ORDER_VALIDATED", "INVALID_ORDER");
+      return res.status(400).json({ error: "Invalid quantity" });
+    }
     const product = catalog.products.find((row) => row.sku === sku);
     if (!product || product.active === false) {
       if (key) delete db().orderIdempotency[key];
@@ -1203,7 +1241,7 @@ app.post("/api/order/create", beginOrderTrace, refuseEphemeralOrders, requireAut
     }
     const brand = String(product.brand || "").trim();
     const flavor = String(product.name || "").trim();
-    const sent = item.variant ? String(item.variant).trim() : "";
+    const sent = item.variant ? String(item.variant).trim().slice(0, 120) : "";
     const variant = sent && sent.localeCompare(flavor, "ru", { sensitivity: "accent" }) !== 0 && sent.localeCompare(brand, "ru", { sensitivity: "accent" }) !== 0 ? sent : "";
     normalized.push({
       productId: sku,
@@ -1217,7 +1255,7 @@ app.post("/api/order/create", beginOrderTrace, refuseEphemeralOrders, requireAut
     });
   }
 
-  const priced = priceOrder(normalized, shelfPrices, req.body?.promoCode, req.user, db().promos);
+  const priced = priceOrder(normalized, shelfPrices, String(req.body?.promoCode || "").slice(0, 64), req.user, db().promos);
   if (!priced.ok) {
     if (key) delete db().orderIdempotency[key];
     mark(req, "ORDER_VALIDATED", priceFailureCode(priced.error));
@@ -1322,7 +1360,7 @@ function dropUnsavedOrder(orderId, key) {
 }
 
 app.post("/api/order/confirm", beginOrderTrace, refuseEphemeralOrders, requireAuth, async (req, res) => {
-  const order = db().orders[String(req.body?.orderId || "")];
+  const order = own(db().orders, req.body?.orderId);
   const city = cityOf(req.body?.city || order?.city);
   if (!order || !city) {
     mark(req, "ORDER_VALIDATED", "ORDER_NOT_FOUND");
@@ -1363,15 +1401,15 @@ app.post("/api/order/confirm", beginOrderTrace, refuseEphemeralOrders, requireAu
       name: [req.user.first_name, req.user.last_name].filter(Boolean).join(" ").trim(),
     },
   };
-  const typed = String(data.address || "").trim();
+  const typed = String(data.address || "").trim().slice(0, 300);
   const place = method === "pickup" && courier.meeting_place ? courier.meeting_place : typed;
   const next = {
     method,
     courier: courier.courier_id,
-    date: String(req.body?.delivery_date || ""),
+    date: String(req.body?.delivery_date || "").slice(0, 32),
     time,
     place,
-    comment: String(data.comment || "").trim(),
+    comment: String(data.comment || "").trim().slice(0, 500),
   };
   let result;
   try {
@@ -1395,11 +1433,11 @@ app.post("/api/order/confirm", beginOrderTrace, refuseEphemeralOrders, requireAu
 
 app.post("/api/order/payment", refuseEphemeralOrders, requireAuth, (req, res) => {
   const orderId = String(req.body?.orderId || "");
-  const order = db().orders[orderId];
+  const order = own(db().orders, orderId);
   if (!order) return res.status(404).json({ error: "Order not found" });
   if (order.user_id !== req.user.tg_id) return res.status(403).json({ error: "Forbidden" });
   const paymentKey = `${req.user.tg_id}:${orderId}`;
-  const cached = db().paymentIdempotency[paymentKey];
+  const cached = own(db().paymentIdempotency, paymentKey);
   if (cached && cached.expiresAt > Date.now()) return res.json(cached.payload);
   if (!String(order.delivery_method || "").trim()) return res.status(400).json({ error: "Order must be confirmed before payment" });
   const method = String(req.body?.paymentMethod || "").trim();
@@ -1431,7 +1469,7 @@ app.post("/api/order/payment", refuseEphemeralOrders, requireAuth, (req, res) =>
   const referredBy = String(req.user.referred_by || "");
   if (referredBy && !req.user.first_paid_order_at) {
     req.user.first_paid_order_at = new Date().toISOString();
-    const referrer = db().users[referredBy];
+    const referrer = own(db().users, referredBy);
     let referralAmount = 0;
     if (referrer) {
       referrer.referral_conversions = Number(referrer.referral_conversions || 0) + 1;
@@ -1487,7 +1525,7 @@ app.get("/api/courier/orders", requireAuth, async (req, res) => {
 });
 
 async function applyCourierStatus(user, orderId, next, reason) {
-  const order = db().orders[String(orderId || "")];
+  const order = own(db().orders, orderId);
   const status = normalizeStatus(next);
   if (user.status !== "courier" && user.status !== "admin") {
     const error = new Error("Forbidden");
@@ -1552,7 +1590,7 @@ async function applyCourierStatus(user, orderId, next, reason) {
 }
 
 async function applyCourierCash(user, orderId, received) {
-  const order = db().orders[String(orderId || "")];
+  const order = own(db().orders, orderId);
   if (!order) {
     const error = new Error("Order not found");
     error.status = 404;
@@ -1625,7 +1663,7 @@ app.get("/api/admin/orders", requireAuth, (req, res) => {
 app.post("/api/admin/orders/status", requireAuth, async (req, res) => {
   if (req.user.status !== "admin") return res.status(403).json({ error: "Forbidden" });
   const city = cityOf(req.body?.city);
-  const order = db().orders[String(req.body?.orderId || "")];
+  const order = own(db().orders, req.body?.orderId);
   const next = normalizeStatus(req.body?.status);
   if (!city) return res.status(400).json({ error: "City parameter is required" });
   if (!order) return res.status(404).json({ error: "Order not found" });
@@ -1634,7 +1672,7 @@ app.post("/api/admin/orders/status", requireAuth, async (req, res) => {
   if (next === "cancelled") {
     if (normalizeStatus(order.status) === "delivered") return res.status(409).json({ error: "Заказ уже выдан" });
     try {
-      await withOrderLock(order.id, () => returnStock(order, String(req.body?.reason || "").trim() || "Отмена администратора"));
+      await withOrderLock(order.id, () => returnStock(order, String(req.body?.reason || "").trim().slice(0, 200) || "Отмена администратора"));
     } catch (error) {
       return res.status(error.status || 500).json({ error: error.message || "Error" });
     }
@@ -1682,7 +1720,7 @@ function botContext() {
       return ownOrders(tgId);
     },
     orderFor(tgId, orderId) {
-      const order = db().orders[String(orderId || "")];
+      const order = own(db().orders, orderId);
       if (!order || order.user_id !== String(tgId)) return null;
       return order;
     },
@@ -1696,13 +1734,14 @@ function botContext() {
       return { delivered: delivered.length, last, level: loyalty.step, percent: loyalty.percent };
     },
     async saveTicket(user, orderId, text) {
-      const owned = orderId && db().orders[orderId]?.user_id === user.tg_id ? orderId : "";
+      const owned = orderId && own(db().orders, orderId)?.user_id === user.tg_id ? orderId : "";
+      const cleanText = String(text || "").trim().slice(0, 1000);
       const ticket = {
         id: `SUP-${Date.now().toString(36).toUpperCase()}`,
         user_id: user.tg_id,
         username: user.username || "",
         order_id: owned,
-        text,
+        text: cleanText,
         status: "open",
         created_at: new Date().toISOString(),
       };
@@ -1714,7 +1753,7 @@ function botContext() {
           recipient: manager,
           orderId: ticket.id,
           kind: "support",
-          text: `Обращение ${ticket.id}\n${ticket.user_id}\n${owned || "—"}\n${text}`,
+          text: `Обращение ${ticket.id}\n${ticket.user_id}\n${owned || "—"}\n${cleanText}`,
         });
         await trySendNotice(notice, async (item) => {
           const token = String(process.env.TELEGRAM_BOT_TOKEN || "");
@@ -1730,7 +1769,7 @@ function botContext() {
       return ticket;
     },
     async relayToCourier(user, orderId, text) {
-      const order = db().orders[String(orderId || "")];
+      const order = own(db().orders, orderId);
       if (!order || order.user_id !== String(user?.tg_id || "")) return { ok: false };
       if (!["pending", "assigned", "picked_up"].includes(normalizeStatus(order.status))) return { ok: false, closed: true };
       const courier = await courierRecord(order.courier_id);
@@ -1771,7 +1810,7 @@ function botContext() {
         .sort((a, b) => `${a.delivery_date} ${a.delivery_time}`.localeCompare(`${b.delivery_date} ${b.delivery_time}`));
     },
     async courierOrder(user, orderId) {
-      const order = db().orders[String(orderId || "")];
+      const order = own(db().orders, orderId);
       const courier = await courierForUser(user);
       if (!order || !courier || order.courier_id !== courier.courier_id) return null;
       return {
@@ -1989,7 +2028,7 @@ async function retryOpenNotices() {
   const pending = db().notices.filter((notice) => !notice.sent && notice.status !== "sent" && Number(notice.attempts || 0) < 5 && !(notice.status === "blocked" && telegramTestMode()));
   for (const notice of pending) {
     const orderId = String(notice.order_id || "").split(":")[0];
-    const order = orderId ? db().orders[orderId] : null;
+    const order = orderId ? own(db().orders, orderId) : null;
     if (order && (notice.kind === "courier" || String(notice.id || "").startsWith("courier:"))) {
       const courier = await courierRecord(order.courier_id);
       bindNoticeRecipient(notice, courier?.tg_id);

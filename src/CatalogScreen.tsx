@@ -342,6 +342,7 @@ function ProductArt({ item, theme }: { item: Product; theme: "light" | "dark" })
   const [loaded, setLoaded] = useState(false);
   const image = useRef<HTMLImageElement>(null);
   useEffect(() => {
+    setFailed(false);
     const node = image.current;
     if (node?.complete && node.naturalWidth > 0) setLoaded(true);
   }, [src]);

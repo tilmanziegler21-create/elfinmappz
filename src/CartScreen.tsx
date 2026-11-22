@@ -7,6 +7,8 @@ import { priceCart, euro } from "./products";
 import { favoriteExit } from "./productMotion";
 import { cardItem, cardList, ease, tapSpring } from "./motion";
 import { moneyLocale, useI18n } from "./i18n";
+import { setNumberOf, setShot } from "./setCopy";
+import { useTheme } from "./theme";
 
 export function CartScreen({
   cart,
@@ -29,6 +31,7 @@ export function CartScreen({
 }) {
   const reduce = useReducedMotion();
   const { t, lang } = useI18n();
+  const { theme } = useTheme();
   const money = moneyLocale(lang);
   const priced = priceCart(cart);
   const lines = priced.lines;
@@ -98,6 +101,8 @@ export function CartScreen({
             {lines.map((line) => {
               const blocked = line.variant.availability === "out" || line.variant.stock <= 0;
               const atLimit = line.qty >= line.variant.stock;
+              const setNo = setNumberOf(line.product);
+              const thumb = setNo ? setShot(setNo, theme) : line.product.catalogImage;
               return (
                 <motion.article
                   key={line.key}
@@ -107,14 +112,10 @@ export function CartScreen({
                   transition={{ duration: 0.28, ease }}
                 >
                   <button type="button" className="cart-open" onClick={() => onOpen(line.product.id)}>
-                    <span className="cart-thumb" aria-hidden="true">
-                      {line.product.catalogImage
-                        ? <img src={line.product.catalogImage} alt="" />
-                        : <span className="mark" />}
-                    </span>
+                    <CartThumb src={thumb} isSet={Boolean(setNo)} />
                     <span className="cart-copy">
-                      <span className="cart-brand">{lineTitle(line.product)}</span>
-                      <span className="cart-name" title={cartTitle(line.product, line.variant)}>{cartDetail(line.product, line.variant)}</span>
+                      <span className="cart-brand">{setNo ? t(`set.${setNo}.title`) : lineTitle(line.product)}</span>
+                      <span className="cart-name" title={setNo ? t(`set.${setNo}.line`) : cartTitle(line.product, line.variant)}>{setNo ? t(`set.${setNo}.line`) : cartDetail(line.product, line.variant)}</span>
                       <span className="cart-meta">
                         {euro(line.unitPrice, money)}
                       </span>
@@ -224,6 +225,20 @@ function positionWord(count: number, lang: string) {
   if (one) return "позиция";
   if (few) return "позиции";
   return "позиций";
+}
+
+function CartThumb({ src, isSet }: { src?: string; isSet: boolean }) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    setFailed(false);
+  }, [src]);
+  return (
+    <span className="cart-thumb" data-kind={isSet ? "set" : undefined} aria-hidden="true">
+      {src && !failed
+        ? <img src={src} alt="" decoding="async" onError={() => setFailed(true)} />
+        : <span className="mark" />}
+    </span>
+  );
 }
 
 function Amount({ value }: { value: string }) {
