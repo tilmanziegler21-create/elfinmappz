@@ -8,7 +8,7 @@ import { BOOT_TIMEOUT_MS, bootPhase, bootProgress, WARM_KEY, type BootMarks } fr
 import { ElfinSplash } from "./components/ElfinSplash";
 import { CartScreen } from "./CartScreen";
 import { Catalog } from "./CatalogScreen";
-import { isPodCategory, shopSection } from "./categoryRules";
+import { shopSection } from "./categoryRules";
 import { CheckoutScreen } from "./CheckoutScreen";
 import { CourierScreen } from "./CourierScreen";
 import { OrdersScreen } from "./OrdersScreen";
@@ -19,7 +19,6 @@ import { mediaByBrand, mediaBySku } from "./productMedia";
 import { CART_KEY, clampLineQty, defaultVariant, euro, findProduct, lineKey, products, quantityOffer, readLooseCart, sanitizeCart, setShelfPrices, setSheetCatalog, type Availability, type Product, type Variant } from "./products";
 import { sectionItem, sectionList, tapSpring } from "./motion";
 import { prewarmImages } from "./ImagePreloader";
-import { SetBuilder } from "./SetBuilder";
 import { languageName, languages, useI18n, type Lang } from "./i18n";
 import { setNumberOf, setShot } from "./setCopy";
 import { useTheme } from "./theme";
@@ -559,12 +558,8 @@ export function App() {
                 <Home
                   onOpen={showScreen}
                   onProduct={openProduct}
-                  onAdd={addToCart}
                   shelf={catalogMode === "live" ? liveProducts.filter((item) => shopSection(item.category) !== "Наборы").slice(0, 4) : []}
                   liquids={catalogMode === "live" ? liveProducts.filter((item) => item.category.trim().toLowerCase() === "liquids" || item.category.trim().toLowerCase() === "liquids1") : []}
-                  pods={catalogMode === "live" ? liveProducts.filter((item) => isPodCategory(item.category)) : []}
-                  cartridges={catalogMode === "live" ? liveProducts.filter((item) => item.category.trim().toLowerCase() === "cartridge") : []}
-                  cart={cart}
                   live={catalogMode === "live"}
                 />
               </section>
@@ -746,22 +741,14 @@ function Press({
 function Home({
   onOpen,
   onProduct,
-  onAdd,
   shelf,
   liquids,
-  pods,
-  cartridges,
-  cart,
   live,
 }: {
   onOpen: (screen: Screen) => void;
   onProduct: (id: string, qty?: number) => void;
-  onAdd: (id: string, qty?: number, variantId?: string) => "added" | "limit" | "unavailable";
   shelf: Product[];
   liquids: Product[];
-  pods: Product[];
-  cartridges: Product[];
-  cart: Record<string, number>;
   live: boolean;
 }) {
   const reduce = useReducedMotion();
@@ -769,8 +756,7 @@ function Home({
   const { theme, setTheme } = useTheme();
   const [terms, setTerms] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
-  const [focus, setFocus] = useState<"home" | "hits" | "sets">("home");
-  const [setId, setSetId] = useState("");
+  const [focus, setFocus] = useState<"home" | "hits">("home");
   const tools = useRef<HTMLDivElement>(null);
   const banner = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -809,7 +795,6 @@ function Home({
       .filter((step) => !step.talk && step.qty >= 2 && step.save > 0 && item.variants.some((variant) => variant.stock >= step.qty))
       .map((step) => ({ id: `${item.id}-${step.qty}`, item, step }));
   });
-  const setLiquids = liquids.filter((item) => item.category.trim().toLowerCase() === "liquids");
   const stage = typeof document !== "undefined" ? document.querySelector(".stage") : null;
   return (
     <motion.div
@@ -881,7 +866,7 @@ function Home({
       {focus !== "home" ? (
         <div className="home-focus-bar">
           <button type="button" className="home-back" onClick={() => setFocus("home")}>{t("home.back")}</button>
-          <h2>{focus === "hits" ? t("home.deals") : t("home.sets")}</h2>
+          <h2>{t("home.deals")}</h2>
         </div>
       ) : null}
       {focus === "home" ? (
@@ -925,24 +910,6 @@ function Home({
             ))}
           </div>
         </motion.div>
-      ) : null}
-      {focus === "home" ? (
-        <div className="home-sets">
-          <div className="home-shelf-head"><h2>{t("home.sets")}</h2></div>
-          <button type="button" className="sets-banner" onClick={() => { setSetId(""); setFocus("sets"); }}>
-            <img src="/assets/home/sets-banner.jpg" alt={t("home.sets")} />
-          </button>
-          <div className="set-rail">
-            {(["1", "2", "3", "4", "5", "6"] as const).map((id) => (
-              <button key={id} type="button" onClick={() => { setSetId(id); setFocus("sets"); }}>
-                <img src={setShot(id, theme)} alt="" />
-                <span>{t(`set.${id}.title`)}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : focus === "sets" ? (
-        <SetBuilder pods={pods} liquids={setLiquids} cartridges={cartridges} cart={cart} initialOffer={setId} onAdd={onAdd} />
       ) : null}
       {focus === "home" ? (
       <motion.div className="catalog home-vitrine" variants={sectionItem}>

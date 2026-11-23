@@ -256,12 +256,12 @@ export function SetBuilder({
       {brand ? (
         <fieldset className="set-step">
           <legend>{t("set.flavors")}</legend>
-          {picked.some((item) => item.productId !== brand.id) ? (
-            <div className="set-kept">
-              {picked.filter((item) => item.productId !== brand.id).map((item) => (
-                <button key={item.productId + item.id} type="button" className="set-check is-on" onClick={() => toggleFlavor(item)}>
-                  <span>{item.brandTitle} · {item.label}</span>
-                  <i aria-hidden="true" />
+          {picked.length ? (
+            <div className="set-chips">
+              {picked.map((item) => (
+                <button key={item.productId + item.id} type="button" className="set-chip" onClick={() => toggleFlavor(item)}>
+                  <span>{stockedLiquids.length > 1 ? `${item.brandTitle} · ${item.label}` : item.label}</span>
+                  <i aria-hidden="true">×</i>
                 </button>
               ))}
             </div>

@@ -237,7 +237,14 @@ export function Catalog({
         />
       ) : null}
 
-      {building ? <SetBuilder pods={setPods} liquids={setLiquids} cartridges={setCartridges} cart={cart} onAdd={onAdd} /> : null}
+      {building ? (
+        <div className="home-sets">
+          <div className="sets-banner">
+            <img src="/assets/home/sets-banner.jpg" alt={t("home.sets")} />
+          </div>
+          <SetBuilder pods={setPods} liquids={setLiquids} cartridges={setCartridges} cart={cart} onAdd={onAdd} />
+        </div>
+      ) : null}
 
       {showGrid && (mode === "demo" || mode === "live") ? (
         <section className="catalog-section">
