@@ -32,9 +32,7 @@ export function readSetBundle(): SetBundle | null {
 export function bundleOffer(cart: Record<string, number>) {
   const bundle = readSetBundle();
   if (!bundle) return null;
-  const cartKeys = Object.keys(cart);
   const needKeys = Object.keys(bundle.lines);
-  if (cartKeys.length !== needKeys.length) return null;
   if (!needKeys.every((key) => cart[key] === bundle.lines[key])) return null;
   return bundle;
 }

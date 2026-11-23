@@ -101,6 +101,22 @@ function productFromRows(items: SheetRow[], name: string, image?: string, id?: s
   };
 }
 
+function uniqueNamedRows(items: SheetRow[]) {
+  const byName = new Map<string, SheetRow>();
+  for (const row of items) {
+    const key = (row.name || row.sku).trim().toLowerCase();
+    const current = byName.get(key);
+    if (!current) {
+      byName.set(key, row);
+      continue;
+    }
+    const currentOpen = current.active !== false && current.stock > 0;
+    const nextOpen = row.active !== false && row.stock > 0;
+    if (!currentOpen && nextOpen) byName.set(key, row);
+  }
+  return [...byName.values()];
+}
+
 function groupSheetRows(rows: SheetRow[]): Product[] {
   const groups = new Map<string, SheetRow[]>();
   for (const row of rows) {
@@ -112,8 +128,9 @@ function groupSheetRows(rows: SheetRow[]): Product[] {
   const grouped: Product[] = [];
   for (const items of groups.values()) {
     const identity = catalogIdentity(items[0].brand || "");
-    const own = items.filter((row) => mediaBySku(row.sku));
-    const shared = items.filter((row) => !mediaBySku(row.sku));
+    const unique = uniqueNamedRows(items);
+    const own = unique.filter((row) => mediaBySku(row.sku));
+    const shared = unique.filter((row) => !mediaBySku(row.sku));
     for (const row of own) {
       const media = mediaBySku(row.sku);
       grouped.push(productFromRows([row], (row.name || identity.title).trim(), media?.image, row.sku.toLowerCase()));

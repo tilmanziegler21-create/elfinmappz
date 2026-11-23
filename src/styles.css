@@ -265,6 +265,8 @@ button {
 
 .brand-mark {
   margin: 2px 0 0;
+  max-width: 100%;
+  padding-inline: 0.12em;
   font-family: var(--serif);
   font-size: 48px;
   font-weight: 500;
@@ -820,9 +822,11 @@ a.btn {
 
 .catalog .product-photo {
   width: auto;
-  max-width: 86%;
-  height: 174px;
+  max-width: 78%;
+  max-height: 168px;
+  height: auto;
   object-fit: contain;
+  object-position: center;
   opacity: 0;
 }
 
@@ -1054,8 +1058,8 @@ a.btn {
   height: 100%;
   border-radius: 0;
   object-fit: cover;
-  object-position: 56% 18%;
-  transform: translate3d(0, calc(var(--hero-shift, 0px) * 0.3), 0) scale(1.08);
+  object-position: center 22%;
+  transform: translate3d(0, calc(var(--hero-shift, 0px) * 0.3), 0);
   box-shadow: none;
 }
 
@@ -1249,16 +1253,14 @@ a.btn {
 }
 
 .set-hero img {
-  align-self: stretch;
-  width: 100%;
-  height: 100%;
-  min-height: 132px;
-  max-height: 152px;
+  align-self: center;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 132px;
   display: block;
-  object-fit: cover;
+  object-fit: contain;
   object-position: center;
-  -webkit-mask-image: linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, 0.78) 14%, #000 28%);
-  mask-image: linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, 0.78) 14%, #000 28%);
 }
 
 .set-points {
@@ -1328,8 +1330,9 @@ a.btn {
   aspect-ratio: 787 / 470;
   margin-bottom: 8px;
   border-radius: 14px;
-  object-fit: cover;
+  object-fit: contain;
   object-position: center;
+  background: var(--frost);
 }
 
 .offer-open strong {
@@ -1426,7 +1429,7 @@ a.btn {
   width: 100%;
   max-width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   object-position: center;
 }
 
@@ -1690,8 +1693,10 @@ a.btn {
 }
 
 .home-vitrine .product-photo {
-  height: 118px;
-  max-width: 78%;
+  width: auto;
+  height: auto;
+  max-width: 72%;
+  max-height: 112px;
 }
 
 .home-vitrine .hit-card .product-art {
@@ -2415,9 +2420,15 @@ a.btn {
   object-fit: contain;
 }
 
+.set-row-copy {
+  min-width: 0;
+  flex: 1;
+}
+
 .set-row-copy strong,
 .set-row-copy em {
   display: block;
+  overflow-wrap: anywhere;
 }
 
 .set-row-copy strong {
@@ -2522,6 +2533,12 @@ a.btn {
   font-weight: 700;
 }
 
+.set-checks,
+.set-colors,
+.set-kept {
+  scroll-margin-bottom: 140px;
+}
+
 .set-dock {
   position: sticky;
   bottom: 0;
@@ -2567,19 +2584,23 @@ a.btn {
 .set-device-preview {
   display: grid;
   place-items: center;
-  height: 120px;
-  margin-bottom: 8px;
+  box-sizing: border-box;
+  width: 96px;
+  height: 176px;
+  margin: 0 auto 10px;
+  padding: 12px 10px;
   border-radius: 18px;
   background: var(--frost);
   overflow: hidden;
 }
 
 .set-device-preview img {
-  max-width: 100%;
-  max-height: 100%;
   width: auto;
   height: auto;
+  max-width: 72px;
+  max-height: 152px;
   object-fit: contain;
+  object-position: center;
 }
 
 .set-step .set-swatches + .set-checks {
@@ -3150,9 +3171,10 @@ a.btn {
   width: 100%;
   height: auto;
   aspect-ratio: 787 / 470;
-  max-height: 520px;
+  max-height: 420px;
   border-radius: 22px;
-  object-fit: cover;
+  object-fit: contain;
+  background: var(--frost);
 }
 
 .hero-scene[data-accent="melon"],
@@ -4003,7 +4025,7 @@ a.btn {
 .cart-thumb[data-kind="set"] img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
 }
 
 .cart-thumb .mark {

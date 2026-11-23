@@ -8,6 +8,7 @@ import { priceCart, euro } from "./products";
 import { favoriteExit } from "./productMotion";
 import { cardItem, cardList, ease, tapSpring } from "./motion";
 import { moneyLocale, useI18n } from "./i18n";
+import { bundleOffer } from "./setBundle";
 import { setNumberOf, setShot } from "./setCopy";
 import { useTheme } from "./theme";
 
@@ -36,9 +37,12 @@ export function CartScreen({
   const money = moneyLocale(lang);
   const priced = priceCart(cart);
   const lines = priced.lines;
-  const units = lines.reduce((sum, line) => sum + line.qty, 0);
+  const bundle = bundleOffer(cart);
+  const extras = bundle ? lines.filter((line) => !bundle.lines[line.key]) : lines;
+  const positions = bundle ? 1 + extras.length : lines.length;
+  const units = (bundle ? 1 : 0) + extras.reduce((sum, line) => sum + line.qty, 0);
   const total = priced.total;
-  const [undo, setUndo] = useState<{ key: string; qty: number } | null>(null);
+  const [undo, setUndo] = useState<{ lines: { key: string; qty: number }[] } | null>(null);
   const [revealEmpty, setRevealEmpty] = useState(lines.length === 0);
   const previousCount = useRef(lines.length);
   const lock = useRef(new Set<string>());
@@ -58,8 +62,8 @@ export function CartScreen({
   useEffect(() => {
     if (!undo) return;
     const id = window.setTimeout(() => {
-      lock.current.delete(undo.key);
-      setUndo((current) => (current?.key === undo.key ? null : current));
+      for (const line of undo.lines) lock.current.delete(line.key);
+      setUndo((current) => (current === undo ? null : current));
     }, 4000);
     return () => window.clearTimeout(id);
   }, [undo]);
@@ -70,13 +74,26 @@ export function CartScreen({
     if (qty < 1) return;
     lock.current.add(key);
     onRemove(key);
-    setUndo({ key, qty });
+    setUndo({ lines: [{ key, qty }] });
+  }
+
+  function removeBundle() {
+    if (!bundle) return;
+    const saved = Object.entries(bundle.lines).flatMap(([key, qty]) => {
+      if (lock.current.has(key) || qty < 1) return [];
+      lock.current.add(key);
+      onRemove(key);
+      return [{ key, qty }];
+    });
+    if (saved.length) setUndo({ lines: saved });
   }
 
   function restore() {
     if (!undo) return;
-    lock.current.delete(undo.key);
-    onRestore(undo.key, undo.qty);
+    for (const line of undo.lines) {
+      lock.current.delete(line.key);
+      onRestore(line.key, line.qty);
+    }
     setUndo(null);
   }
 
@@ -99,7 +116,28 @@ export function CartScreen({
         >
           {adjusted ? <p className="cart-note">{t("cart.adjusted")}</p> : null}
           <AnimatePresence initial={false}>
-            {lines.map((line) => {
+            {bundle ? (
+              <motion.article key={`set-${bundle.offerId}`} className="cart-item" variants={cardItem} exit={reduce ? undefined : favoriteExit} transition={{ duration: 0.28, ease }}>
+                <button type="button" className="cart-open" onClick={() => onCatalog()}>
+                  <CartThumb src={setShot(bundle.offerId, theme)} kind="set" />
+                  <span className="cart-copy">
+                    <span className="cart-brand">{t(`set.${bundle.offerId}.title`)}</span>
+                    <span className="cart-name">{lines.filter((line) => bundle.lines[line.key]).map((line) => line.qty > 1 ? `${line.variant.label} × ${line.qty}` : line.variant.label).join(", ")}</span>
+                    <span className="cart-meta">{euro(bundle.price, money)}</span>
+                  </span>
+                </button>
+                <motion.button type="button" className="cart-remove" onClick={removeBundle} whileTap={reduce ? undefined : { scale: 0.96 }} transition={tapSpring} aria-label={t("cart.remove", { name: t(`set.${bundle.offerId}.title`), variant: "" })}>×</motion.button>
+                <div className="cart-side">
+                  <div className="qty">
+                    <button type="button" disabled aria-label={t("product.less")}>−</button>
+                    <span>1</span>
+                    <button type="button" disabled aria-label={t("product.more")}>+</button>
+                  </div>
+                  <Amount value={euro(bundle.price, money)} />
+                </div>
+              </motion.article>
+            ) : null}
+            {extras.map((line) => {
               const blocked = line.variant.availability === "out" || line.variant.stock <= 0;
               const atLimit = line.qty >= line.variant.stock;
               const setNo = setNumberOf(line.product);
@@ -183,7 +221,7 @@ export function CartScreen({
       {lines.length > 0 ? (
         <div className="cart-bar">
           <div className="cart-sum">
-            <span>{lines.length} {positionWord(lines.length, lang)} · {units} {t("cart.units")}</span>
+            <span>{positions} {positionWord(positions, lang)} · {units} {t("cart.units")}</span>
             <Amount value={euro(priced.total, money)} />
           </div>
           <div className="cart-sum">

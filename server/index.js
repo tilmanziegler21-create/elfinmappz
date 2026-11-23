@@ -1231,9 +1231,13 @@ app.post("/api/order/create", beginOrderTrace, refuseEphemeralOrders, requireAut
 
   const priced = priceOrder(normalized, shelfPrices, String(req.body?.promoCode || "").slice(0, 64), req.user, db().promos);
   const deal = setDealPrice(req.body?.setOffer, normalized);
-  if (priced.ok && deal != null && deal < priced.total) {
-    priced.discount = Math.round((priced.discount + (priced.total - deal)) * 100) / 100;
-    priced.total = deal;
+  if (priced.ok && deal) {
+    const setCharged = Math.round((priced.total - deal.otherSheet) * 100) / 100;
+    if (setCharged > deal.price) {
+      const savings = Math.round((setCharged - deal.price) * 100) / 100;
+      priced.discount = Math.round((priced.discount + savings) * 100) / 100;
+      priced.total = Math.round((priced.total - savings) * 100) / 100;
+    }
   }
   if (!priced.ok) {
     if (key) delete db().orderIdempotency[key];

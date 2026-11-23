@@ -23,8 +23,12 @@ export function setDealPrice(offerId, items) {
     else if (category === "cartridge") cartridges += qty;
     else other += qty;
   }
-  if (other) return null;
   const podsOk = offer.pod ? pods === 1 : pods === 0;
-  if (podsOk && liquids === offer.liquids && cartridges === offer.cartridges) return offer.price;
-  return null;
+  if (!(podsOk && liquids === offer.liquids && cartridges === offer.cartridges)) return null;
+  const otherSheet = items.reduce((sum, item) => {
+    const category = String(item?.category || "").trim().toLowerCase();
+    if (category === "pod" || category === "pods" || category === "liquids" || category === "cartridge") return sum;
+    return sum + Number(item.price) * Number(item.quantity);
+  }, 0);
+  return { price: offer.price, otherSheet: Math.round(otherSheet * 100) / 100 };
 }

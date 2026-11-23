@@ -96,7 +96,8 @@ export function SetBuilder({
     setNote(null);
   }, [initialOffer]);
   const offer = offers.find((item) => item.id === offerId) ?? null;
-  const brand = liquids.find((item) => item.id === brandId) ?? liquids[0] ?? null;
+  const stockedLiquids = liquids.filter((item) => openChoices(item).some((choice) => choice.stock - (cart[lineKey(choice.productId, choice.id)] ?? 0) >= 1 || flavorPicks.some((pick) => samePick(choice, pick))));
+  const brand = stockedLiquids.find((item) => item.id === brandId) ?? stockedLiquids[0] ?? null;
 
   function room(item: Choice, qty: number) {
     return item.stock - (cart[lineKey(item.productId, item.id)] ?? 0) >= qty;
@@ -240,18 +241,18 @@ export function SetBuilder({
           )}
         </fieldset>
       ) : null}
-      {liquids.length > 1 ? (
+      {stockedLiquids.length > 1 ? (
         <fieldset className="set-step">
           <legend>{t("set.brand")}</legend>
           <div className="set-swatches" role="radiogroup" aria-label={t("set.brand")}>
-            {liquids.map((item) => (
+            {stockedLiquids.map((item) => (
               <button key={item.id} type="button" role="radio" aria-checked={item.id === brand?.id} className={item.id === brand?.id ? "set-swatch is-on" : "set-swatch"} onClick={() => { setBrandId(item.id); setNote(null); }}>
                 {lineTitle(item)}
               </button>
             ))}
           </div>
         </fieldset>
-      ) : liquids.length === 0 ? <p className="set-empty">{t("set.noLiquid")}</p> : null}
+      ) : stockedLiquids.length === 0 ? <p className="set-empty">{t("set.noLiquid")}</p> : null}
       {brand ? (
         <fieldset className="set-step">
           <legend>{t("set.flavors")}</legend>
