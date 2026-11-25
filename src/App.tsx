@@ -836,54 +836,25 @@ function Home({
       </motion.div>
       {focus === "home" ? (
         <motion.div className="home-promos" variants={sectionItem}>
-          <article className="promo">
-            <div className="promo-copy">
-              <h2>{t("home.together")}</h2>
-              <p>{t("home.promoLine")}</p>
-              <p className="promo-note">{t("home.promoFollow")}</p>
-              <button type="button" className="promo-action" onClick={() => onOpen("catalog")}>{t("home.promoWatch")}</button>
-            </div>
-            <div className="promo-art promo-tiles" aria-hidden="true">
-              <span><SparkMark />{t("home.spotlightNew")}</span>
-              <span><FlameMark />{t("home.spotlightPopular")}</span>
-              <span><BoxMark />{t("home.promoStock")}</span>
-            </div>
+          <article className="promo-shot">
+            <img src={`/assets/home/promo/place-${theme}.jpg`} alt="" />
+            <h2>{t("home.together")}</h2>
+            <button type="button" onClick={() => onOpen("catalog")}>{t("home.promoWatch")}</button>
           </article>
-          <article className="promo">
-            <div className="promo-copy">
-              <h2>{t("home.discountTitle")}</h2>
-              <p>{t("home.discountLead")}</p>
-              <div className="promo-pills">
-                <span>{t("home.discountOne")}</span>
-                <span>{t("home.discountTwo")}</span>
-                <span>{t("home.discountMore")}</span>
-              </div>
-              <p className="promo-note">{t("home.discountNote")}</p>
-              <button type="button" className="promo-action" onClick={() => setTerms(true)}>{t("home.discountAction")}</button>
-            </div>
-            <div className="promo-art promo-mark" aria-hidden="true"><PercentMark /></div>
+          <article className="promo-shot">
+            <img src={`/assets/home/promo/discount-${theme}.jpg`} alt="" />
+            <h2>{t("home.discountTitle")}</h2>
+            <button type="button" onClick={() => setTerms(true)}>{t("home.discountAction")}</button>
           </article>
-          <article className="promo">
-            <div className="promo-copy">
-              <h2>{t("home.bonusTitle")}</h2>
-              <p>{t("home.bonusLead")}</p>
-              <p className="promo-track">SILVER · GOLD · PLATINUM · LEGEND</p>
-              <p className="promo-note">{t("home.bonusNote")}</p>
-              <button type="button" className="promo-action" onClick={() => onOpen("profile")}>{t("home.bonusAction")}</button>
-            </div>
-            <div className="promo-art promo-mark" aria-hidden="true"><CrownMark /></div>
+          <article className="promo-shot">
+            <img src={`/assets/home/promo/bonus-${theme}.jpg`} alt="" />
+            <h2>{t("home.bonusTitle")}</h2>
+            <button type="button" onClick={() => onOpen("profile")}>{t("home.bonusAction")}</button>
           </article>
-          <article className="promo">
-            <div className="promo-copy">
-              <h2>{t("home.inviteTitle")}</h2>
-              <div className="promo-pills">
-                <span>{t("home.inviteYou")}</span>
-                <span>{t("home.inviteFriend")}</span>
-              </div>
-              <p className="promo-note">{t("home.inviteNote")}</p>
-              <button type="button" className="promo-action" onClick={() => onOpen("profile")}>{t("home.inviteAction")}</button>
-            </div>
-            <div className="promo-art promo-mark" aria-hidden="true"><InviteMark /></div>
+          <article className="promo-shot">
+            <img src={`/assets/home/promo/invite-${theme}.jpg`} alt="" />
+            <h2>{t("home.inviteTitle")}</h2>
+            <button type="button" onClick={() => onOpen("profile")}>{t("home.inviteAction")}</button>
           </article>
         </motion.div>
       ) : null}
@@ -946,30 +917,6 @@ function Home({
         : null}
     </motion.div>
   );
-}
-
-function SparkMark() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 13.8 9 20.5 12 13.8 15 12 21.5 10.2 15 3.5 12 10.2 9Z" /></svg>;
-}
-
-function FlameMark() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2s4 4.2 4 8.2A4 4 0 0 1 12 14a2.2 2.2 0 0 0-2.2 2.2C9.8 19.4 12 22 12 22s6.5-2.4 6.5-8.4C18.5 7.4 12 2 12 2Z" /></svg>;
-}
-
-function BoxMark() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8.2 12 4l8 4.2v7.6L12 20 4 15.8Z" /><path d="M12 12 4 8.2M12 12v8M12 12l8-3.8" /></svg>;
-}
-
-function PercentMark() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="7.5" cy="7.5" r="2.2" /><circle cx="16.5" cy="16.5" r="2.2" /><path d="M18 6 6 18" /></svg>;
-}
-
-function CrownMark() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16.5 6.2 8l3.6 4.2L12 6.5l2.2 5.7L17.8 8 20 16.5Z" /></svg>;
-}
-
-function InviteMark() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="9" r="3" /><circle cx="16" cy="10" r="2.2" /><path d="M4.5 18.5c.8-2.4 2.6-3.6 4.5-3.6s3.7 1.2 4.5 3.6M14.2 15.2c1.2-.5 2.4-.4 3.5.2 1 .7 1.6 1.8 1.8 3.1" /></svg>;
 }
 
 function SunMark() {

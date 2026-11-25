@@ -102,7 +102,7 @@
     "category": "pods"
   },
   "pd-0013": {
-    "sku": "EL-001",
+    "sku": "",
     "image": "/assets/products/pods/xros-08-mesh-4pcs.png",
     "imageType": "transparent",
     "scene": "pod-float",
@@ -111,9 +111,9 @@
   },
   "voex-pepper-mint": {
     "sku": "VOEX-PEPPER-MINT",
-    "image": "/assets/products/liquids/voex-pepper-mint.jpg",
-    "imageType": "photo",
-    "scene": "static-product",
+    "image": "/assets/products/liquids/voex-pepper-mint.png",
+    "imageType": "transparent",
+    "scene": "liquid-float",
     "accent": "mint",
     "category": "liquids"
   },
