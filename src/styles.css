@@ -812,7 +812,7 @@ a.btn {
   display: grid;
   place-items: center;
   width: min(78%, 118px);
-  height: 164px;
+  height: 184px;
   margin: 0 auto 8px;
   border-radius: 18px;
   background: var(--frost);
@@ -822,8 +822,8 @@ a.btn {
 .catalog .product-photo {
   width: auto;
   height: auto;
-  max-width: 88%;
-  max-height: 92%;
+  max-width: 92%;
+  max-height: 168px;
   object-fit: contain;
   object-position: center;
   opacity: 0;
@@ -1783,7 +1783,7 @@ a.btn {
 
 .home-vitrine .product-art {
   width: min(78%, 112px);
-  height: 148px;
+  height: 168px;
   margin: 0 auto 6px;
 }
 
@@ -1791,7 +1791,9 @@ a.btn {
   width: auto;
   height: auto;
   max-width: 88%;
-  max-height: 92%;
+  max-height: 152px;
+  object-fit: contain;
+  object-position: center;
 }
 
 .home-vitrine .hit-card .product-art {
@@ -1851,12 +1853,13 @@ a.btn {
 
   .home-vitrine .product:not([data-kind="set"]) .product-art {
     width: min(78%, 104px);
-    height: 136px;
+    height: 168px;
   }
 
   .home-vitrine .product:not([data-kind="set"]) .product-photo {
+    width: auto;
     height: auto;
-    max-height: 92%;
+    max-height: 152px;
   }
 }
 
@@ -2204,11 +2207,13 @@ a.btn {
 
 @media (max-width: 360px) {
   .catalog:not(.home-vitrine) .product:not([data-kind="set"]) .product-art {
-    height: 164px;
+    height: 184px;
   }
 
   .catalog:not(.home-vitrine) .product:not([data-kind="set"]) .product-photo {
-    height: 146px;
+    width: auto;
+    height: auto;
+    max-height: 168px;
   }
 }
 
