@@ -57,6 +57,16 @@ function flavorCount(count: number) {
   return `${count} ${word}`;
 }
 
+function spotProducts(items: Product[]) {
+  const text = (item: Product) => `${item.brand || ""} ${item.name} ${item.id}`.toUpperCase();
+  const pick = (test: (value: string) => boolean) => items.find((item) => item.catalogImage && test(text(item)));
+  return [
+    pick((value) => value.includes("VOEX")),
+    pick((value) => value.includes("PUFFY")),
+    pick((value) => value.includes("XROS 6")),
+  ].filter((item): item is Product => Boolean(item));
+}
+
 function productSlug(name: string) {
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   return slug || "item";
@@ -559,6 +569,7 @@ export function App() {
                   onOpen={showScreen}
                   onProduct={openProduct}
                   shelf={catalogMode === "live" ? liveProducts.filter((item) => shopSection(item.category) !== "Наборы").slice(0, 4) : []}
+                  spots={catalogMode === "live" ? spotProducts(liveProducts) : []}
                   liquids={catalogMode === "live" ? liveProducts.filter((item) => item.category.trim().toLowerCase() === "liquids" || item.category.trim().toLowerCase() === "liquids1") : []}
                   live={catalogMode === "live"}
                 />
@@ -742,12 +753,14 @@ function Home({
   onOpen,
   onProduct,
   shelf,
+  spots,
   liquids,
   live,
 }: {
   onOpen: (screen: Screen) => void;
   onProduct: (id: string, qty?: number) => void;
   shelf: Product[];
+  spots: Product[];
   liquids: Product[];
   live: boolean;
 }) {
@@ -834,6 +847,22 @@ function Home({
           ) : null}
         </div>
       </motion.div>
+      {focus === "home" ? (
+        <button type="button" className="home-jump" onClick={() => onOpen("catalog")}>{t("home.all")}</button>
+      ) : null}
+      {focus === "home" && spots.length > 0 ? (
+        <div className="home-spots">
+          {spots.map((item, index) => (
+            <button key={item.id} type="button" className="spot-card" onClick={() => onProduct(item.id)}>
+              <span className="spot-art"><img src={item.catalogImage} alt="" /></span>
+              <span className="spot-copy">
+                <strong>{t(index === 0 ? "home.spotlightNew" : index === 1 ? "home.spotlightPopular" : "home.spotlightBack")}</strong>
+                <em>{lineTitle(item)}</em>
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : null}
       {focus === "home" ? (
         <motion.div className="home-promos" variants={sectionItem}>
           <article className="promo-shot">

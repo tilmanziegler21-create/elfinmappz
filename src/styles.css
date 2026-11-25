@@ -1010,6 +1010,54 @@ a.btn {
   font-weight: 700;
 }
 
+.home-jump {
+  height: 44px;
+  width: 100%;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #3aa0ff, #1677f2);
+  color: white;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.home-jump::after {
+  content: " ›";
+}
+
+.home-spots {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.home-spots .spot-card {
+  min-width: 0;
+}
+
+.home-spots .spot-art {
+  height: 92px;
+}
+
+.home-spots .spot-copy {
+  padding: 6px 6px 8px;
+}
+
+.home-spots .spot-copy strong,
+.home-spots .spot-copy em {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-spots .spot-copy strong {
+  font-size: 11px;
+}
+
+.home-spots .spot-copy em {
+  font-size: 10px;
+}
+
 .home-promos {
   display: flex;
   flex-direction: column;
