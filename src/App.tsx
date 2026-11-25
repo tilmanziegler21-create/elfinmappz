@@ -21,6 +21,7 @@ import { sectionItem, sectionList, tapSpring } from "./motion";
 import { prewarmImages } from "./ImagePreloader";
 import { languageName, languages, useI18n, type Lang } from "./i18n";
 import { setNumberOf, setShot } from "./setCopy";
+import { ClubMenu, type ClubView } from "./ClubMenu";
 import { useTheme } from "./theme";
 
 type Screen = "home" | "catalog" | "cart" | "orders" | "profile" | "checkout" | "courier" | "admin";
@@ -448,10 +449,13 @@ export function App() {
     window.history.pushState({ productFrom: screen }, "", `#product/${id}`);
   }
 
-  function showScreen(next: Screen) {
+  const [clubView, setClubView] = useState<ClubView | null>(null);
+
+  function showScreen(next: Screen, club: ClubView | null = null) {
     const body = document.querySelector(".body");
     if (body instanceof HTMLElement && !productId) scrolls.current[screen] = body.scrollTop;
     setCheckoutOpen(false);
+    setClubView(next === "profile" ? club : null);
     setScreen(next);
   }
 
@@ -572,6 +576,7 @@ export function App() {
                   spots={catalogMode === "live" ? spotProducts(liveProducts) : []}
                   liquids={catalogMode === "live" ? liveProducts.filter((item) => item.category.trim().toLowerCase() === "liquids" || item.category.trim().toLowerCase() === "liquids1") : []}
                   live={catalogMode === "live"}
+                  onClub={(view) => showScreen("profile", view)}
                 />
               </section>
             ) : null}
@@ -625,6 +630,9 @@ export function App() {
                     }
                   }}
                   roleError={roleError}
+                  clubView={clubView}
+                  onClub={setClubView}
+                  onOrders={() => showScreen("orders")}
                   onRole={async (tgId) => {
                     localStorage.setItem("elfin-dev-user", tgId);
                     try {
@@ -756,6 +764,7 @@ function Home({
   spots,
   liquids,
   live,
+  onClub,
 }: {
   onOpen: (screen: Screen) => void;
   onProduct: (id: string, qty?: number) => void;
@@ -763,6 +772,7 @@ function Home({
   spots: Product[];
   liquids: Product[];
   live: boolean;
+  onClub: (view: ClubView) => void;
 }) {
   const reduce = useReducedMotion();
   const { t, lang, setLang } = useI18n();
@@ -878,12 +888,12 @@ function Home({
           <article className="promo-shot">
             <img src={`/assets/home/promo/bonus-${theme}.jpg`} alt="" />
             <h2>{t("home.bonusTitle")}</h2>
-            <button type="button" onClick={() => onOpen("profile")}>{t("home.bonusAction")}</button>
+            <button type="button" onClick={() => onClub("club")}>{t("home.bonusAction")}</button>
           </article>
           <article className="promo-shot">
             <img src={`/assets/home/promo/invite-${theme}.jpg`} alt="" />
             <h2>{t("home.inviteTitle")}</h2>
-            <button type="button" onClick={() => onOpen("profile")}>{t("home.inviteAction")}</button>
+            <button type="button" onClick={() => onClub("invite")}>{t("home.inviteAction")}</button>
           </article>
         </motion.div>
       ) : null}
@@ -1019,6 +1029,9 @@ function Profile({
   onAdmin,
   onRole,
   roleError,
+  clubView,
+  onClub,
+  onOrders,
 }: {
   session: Session | null;
   authPhase: AuthPhase;
@@ -1027,6 +1040,9 @@ function Profile({
   onAdmin: () => void;
   onRole: (tgId: string) => void;
   roleError?: string | null;
+  clubView: ClubView | null;
+  onClub: (view: ClubView | null) => void;
+  onOrders: () => void;
 }) {
   const { t, lang, setLang } = useI18n();
   const [langOpen, setLangOpen] = useState(false);
@@ -1050,18 +1066,43 @@ function Profile({
 
   return (
     <div className="facts">
-      <button type="button" className="lang-entry" onClick={() => setLangOpen(true)}>
-        <span>🌐 {t("profile.languageTitle")}</span>
-        <strong>{languageName[lang]}</strong>
-      </button>
-      {facts.map(([label, value]) => (
-        <div key={label} className="fact">
-          <span>{label}</span>
-          <strong>{value}</strong>
-        </div>
-      ))}
-      {staff ? <Press className="btn btn-ghost" onClick={onCourier}>{t("profile.courier")}</Press> : null}
-      {session?.user.status === "admin" ? <Press className="btn btn-ghost" onClick={onAdmin}>{t("profile.admin")}</Press> : null}
+      {clubView ? <ClubMenu view={clubView} onView={onClub} onBack={() => onClub(null)} /> : (
+        <>
+          <button type="button" className="club-card" onClick={() => onClub("club")}>
+            <span>
+              <em>{t("club.brand")}</em>
+              <strong>GOLD</strong>
+              <small>{t("profile.until")}</small>
+            </span>
+            <span>
+              <em>{t("profile.myPoints")}</em>
+              <strong>72</strong>
+              <small>{t("profile.more")}</small>
+            </span>
+          </button>
+          <button type="button" className="club-row" onClick={() => onClub("club")}><span>{t("profile.club")}</span><b>›</b></button>
+          <button type="button" className="club-row" onClick={() => onClub("gifts")}><span>{t("profile.gifts")}</span><b>›</b></button>
+          <button type="button" className="club-row" onClick={() => onClub("perks")}><span>{t("profile.perks")}</span><b>›</b></button>
+          <button type="button" className="club-row" onClick={onOrders}><span>{t("profile.orders")}</span><b>›</b></button>
+          <button type="button" className="club-row" onClick={() => setLangOpen(true)}><span>{t("profile.settings")}</span><b>›</b></button>
+        </>
+      )}
+      {clubView ? null : (
+        <>
+          <button type="button" className="lang-entry" onClick={() => setLangOpen(true)}>
+            <span>🌐 {t("profile.languageTitle")}</span>
+            <strong>{languageName[lang]}</strong>
+          </button>
+          {facts.map(([label, value]) => (
+            <div key={label} className="fact">
+              <span>{label}</span>
+              <strong>{value}</strong>
+            </div>
+          ))}
+          {staff ? <Press className="btn btn-ghost" onClick={onCourier}>{t("profile.courier")}</Press> : null}
+          {session?.user.status === "admin" ? <Press className="btn btn-ghost" onClick={onAdmin}>{t("profile.admin")}</Press> : null}
+        </>
+      )}
       {authError ? <p className="checkout-error" role="alert">{authError}</p> : null}
       {roleError ? <p className="checkout-error" role="alert">{roleError}</p> : null}
       {session?.dev ? (
