@@ -5,6 +5,7 @@ import { fileURLToPath } from "url";
 import express from "express";
 import jwt from "jsonwebtoken";
 import { loyaltyForDelivered } from "./loyalty.js";
+import { clubSnapshot, codeFor, tgIdFromCode } from "./club.js";
 import { liquidTierMap, priceOrder, shelfPrices } from "./pricing.js";
 import { setDealPrice } from "./setOffers.js";
 import {
@@ -1073,6 +1074,34 @@ app.post("/api/auth/telegram", (req, res) => {
     orderTrace(requestId, "AUTH_VALIDATED", authFailureCode(error));
     res.status(error.status || 401).json({ error: error.message || "Authentication failed" });
   }
+});
+
+function clubRules() {
+  return { cashbackPercent: CASHBACK_PERCENT, referralEvery: REFERRAL_REQUIRED, referralBonus: REFERRAL_BONUS };
+}
+
+app.get("/api/club", requireAuth, (req, res) => {
+  const level = clubSnapshot(req.user, db().users, db().orders, clubRules());
+  if (req.user.level_percent !== level.percent) {
+    req.user.level_percent = level.percent;
+    persist();
+  }
+  res.json(level);
+});
+
+app.post("/api/club/refer", requireAuth, (req, res) => {
+  const id = tgIdFromCode(req.body?.code);
+  const referrer = id ? own(db().users, id) : null;
+  if (!referrer || codeFor(referrer.tg_id) !== String(req.body?.code || "").trim().toUpperCase()) {
+    return res.status(404).json({ error: "Код не найден" });
+  }
+  if (referrer.tg_id === req.user.tg_id) return res.status(400).json({ error: "Нельзя указать свой код" });
+  if (req.user.referred_by && req.user.referred_by !== referrer.tg_id) {
+    return res.status(409).json({ error: "Код уже привязан" });
+  }
+  req.user.referred_by = referrer.tg_id;
+  persist();
+  res.json(clubSnapshot(req.user, db().users, db().orders, clubRules()));
 });
 
 app.post("/api/order/trace", (req, res) => {

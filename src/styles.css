@@ -1058,6 +1058,78 @@ a.btn {
   font-size: 10px;
 }
 
+.home-keep {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.1;
+}
+
+.home-slides,
+.home-cats {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.home-slides::-webkit-scrollbar,
+.home-cats::-webkit-scrollbar {
+  display: none;
+}
+
+.home-slide,
+.home-cat,
+.home-hints button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.home-slide {
+  flex: 0 0 100%;
+  scroll-snap-align: start;
+}
+
+.home-slides {
+  scroll-snap-type: x mandatory;
+}
+
+.home-slide img,
+.home-hints img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 22px;
+}
+
+.home-cat {
+  flex: 0 0 104px;
+}
+
+.home-cat img {
+  display: block;
+  width: 104px;
+  height: auto;
+  border-radius: 18px;
+}
+
+.home-cat-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.home-cat-head h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.home-hints {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
 .home-promos {
   display: flex;
   flex-direction: column;
@@ -2527,19 +2599,37 @@ a.btn {
   padding: 0 4px 4px;
 }
 
+.set-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.set-list .set-row {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
 .set-row-art {
-  display: grid;
-  place-items: center;
-  height: 132px;
+  display: block;
+  height: auto;
   overflow: hidden;
-  border-radius: 12px;
-  background: var(--frost);
+  border-radius: 22px;
+  background: transparent;
 }
 
 .set-row-art img {
+  display: block;
   width: 100%;
-  height: 100%;
+  height: auto;
   object-fit: contain;
+}
+
+.set-row-foot {
+  display: none;
 }
 
 .set-row-copy {
@@ -3243,6 +3333,17 @@ a.btn {
 
 .club-rules p {
   margin: 0;
+}
+
+.club-code input {
+  width: 100%;
+  height: 40px;
+  margin: 6px 0;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--snow);
+  color: var(--royal);
 }
 
 .facts {

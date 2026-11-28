@@ -13,12 +13,13 @@ import { setNumberOf, setShot } from "./setCopy";
 import { SetBuilder } from "./SetBuilder";
 import { useTheme } from "./theme";
 
-const sections = ["Все", "Жидкости", "Наборы", "POD", "Устройства"] as const;
+const sections = ["Все", "Жидкости", "Наборы", "POD", "Картриджи", "Устройства"] as const;
 
 function sectionName(item: string, t: (key: string) => string) {
   if (item === "Все") return t("catalog.all");
   if (item === "Жидкости") return t("catalog.liquids");
-  if (item === "Устройства") return t("catalog.devices");
+  if (item === "Картриджи") return t("home.catCartridges");
+  if (item === "Устройства") return t("home.catDisposables");
   if (item === "Наборы") return t("catalog.sets");
   return item;
 }
@@ -26,12 +27,17 @@ const FILTER_KEY = "elfin-catalog-ui";
 
 function readFilters() {
   const fallback = { query: "", section: "Все" as (typeof sections)[number], brand: "Все бренды", savedOnly: false, inStock: false };
+  const asked = sessionStorage.getItem("elfin-open-section");
+  if (asked && sections.includes(asked as (typeof sections)[number])) {
+    sessionStorage.removeItem("elfin-open-section");
+    fallback.section = asked as (typeof sections)[number];
+  }
   try {
     const data = JSON.parse(sessionStorage.getItem(FILTER_KEY) || "") as Partial<typeof fallback>;
-    const section = sections.includes(data.section as (typeof sections)[number]) ? data.section as (typeof sections)[number] : "Все";
+    const stored = sections.includes(data.section as (typeof sections)[number]) ? data.section as (typeof sections)[number] : "Все";
     return {
       query: typeof data.query === "string" ? data.query : "",
-      section,
+      section: asked && sections.includes(asked as (typeof sections)[number]) ? fallback.section : stored,
       brand: typeof data.brand === "string" ? data.brand : "Все бренды",
       savedOnly: Boolean(data.savedOnly),
       inStock: Boolean(data.inStock),
@@ -94,7 +100,8 @@ export function Catalog({
     return source.filter((item) => {
       const group = shopSection(item.category);
       const pod = isPodCategory(item.category);
-      const inSection = section === "Все" || group === section || (section === "POD" && pod) || (section === "Наборы" && (pod || item.category.trim().toLowerCase() === "liquids"));
+      const cartridge = item.category.trim().toLowerCase() === "cartridge";
+      const inSection = section === "Все" || group === section || (section === "POD" && pod) || (section === "Картриджи" && cartridge) || (section === "Наборы" && (pod || item.category.trim().toLowerCase() === "liquids"));
       const inBrand = section !== "Жидкости" || brand === "Все бренды" || brandGroup(item.brand || "") === brand;
       const inSaved = !savedOnly || saved.includes(item.id);
       const stockOk = !inStock || (item.availability !== "out" && !item.preview);

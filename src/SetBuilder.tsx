@@ -18,7 +18,8 @@ const offers = [
   { id: "3", liquids: 2, cartridges: 0, pod: true, price: 50, oldPrice: 62 },
   { id: "4", liquids: 2, cartridges: 2, pod: true, price: 60, oldPrice: 76 },
   { id: "5", liquids: 4, cartridges: 0, pod: true, price: 70, oldPrice: 94 },
-  { id: "6", liquids: 4, cartridges: 4, pod: true, price: 90, oldPrice: 118 },
+  { id: "6", liquids: 4, cartridges: 4, pod: true, pods: 1, price: 90, oldPrice: 118 },
+  { id: "7", liquids: 4, cartridges: 0, pod: true, pods: 2, price: 90, oldPrice: 124 },
 ] as const;
 
 function picture(product: Product | null) {
@@ -155,7 +156,8 @@ export function SetBuilder({
   function add() {
     if (!offer || !ready || (offer.cartridges > 0 && !cartridge)) return;
     const lines: Array<[string, number, string, Choice]> = [];
-    if (offer.pod && color) lines.push([color.productId, 1, color.id, color]);
+    const podQty = "pods" in offer ? offer.pods : (offer.pod ? 1 : 0);
+    if (podQty > 0 && color) lines.push([color.productId, podQty, color.id, color]);
     for (const flavor of picked) lines.push([flavor.productId, 1, flavor.id, flavor]);
     if (offer.cartridges > 0 && cartridge) lines.push([cartridge.productId, offer.cartridges, cartridge.id, cartridge]);
     if (lines.some(([, qty, , item]) => !room(item, qty))) {

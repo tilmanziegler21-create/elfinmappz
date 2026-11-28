@@ -5,6 +5,7 @@ export const setOffers = [
   { id: "4", liquids: 2, cartridges: 2, pod: true, price: 60 },
   { id: "5", liquids: 4, cartridges: 0, pod: true, price: 70 },
   { id: "6", liquids: 4, cartridges: 4, pod: true, price: 90 },
+  { id: "7", liquids: 4, cartridges: 0, pod: true, pods: 2, price: 90 },
 ];
 
 export function setDealPrice(offerId, items) {
@@ -23,8 +24,8 @@ export function setDealPrice(offerId, items) {
     else if (category === "cartridge") cartridges += qty;
     else other += qty;
   }
-  const podsOk = offer.pod ? pods === 1 : pods === 0;
-  if (!(podsOk && liquids === offer.liquids && cartridges === offer.cartridges)) return null;
+  const needPods = Number.isInteger(offer.pods) ? offer.pods : (offer.pod ? 1 : 0);
+  if (!(pods === needPods && liquids === offer.liquids && cartridges === offer.cartridges)) return null;
   const otherSheet = items.reduce((sum, item) => {
     const category = String(item?.category || "").trim().toLowerCase();
     if (category === "pod" || category === "pods" || category === "liquids" || category === "cartridge") return sum;

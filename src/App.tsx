@@ -21,7 +21,7 @@ import { sectionItem, sectionList, tapSpring } from "./motion";
 import { prewarmImages } from "./ImagePreloader";
 import { languageName, languages, useI18n, type Lang } from "./i18n";
 import { setNumberOf, setShot } from "./setCopy";
-import { ClubMenu, type ClubView } from "./ClubMenu";
+import { ClubMenu, type ClubData, type ClubView } from "./ClubMenu";
 import { useTheme } from "./theme";
 
 type Screen = "home" | "catalog" | "cart" | "orders" | "profile" | "checkout" | "courier" | "admin";
@@ -58,14 +58,9 @@ function flavorCount(count: number) {
   return `${count} ${word}`;
 }
 
-function spotProducts(items: Product[]) {
-  const text = (item: Product) => `${item.brand || ""} ${item.name} ${item.id}`.toUpperCase();
-  const pick = (test: (value: string) => boolean) => items.find((item) => item.catalogImage && test(text(item)));
-  return [
-    pick((value) => value.includes("VOEX")),
-    pick((value) => value.includes("PUFFY")),
-    pick((value) => value.includes("XROS 6")),
-  ].filter((item): item is Product => Boolean(item));
+function openHomeSection(section: string, onOpen: (screen: Screen) => void) {
+  sessionStorage.setItem("elfin-open-section", section);
+  onOpen("catalog");
 }
 
 function productSlug(name: string) {
@@ -450,6 +445,25 @@ export function App() {
   }
 
   const [clubView, setClubView] = useState<ClubView | null>(null);
+  const [club, setClub] = useState<ClubData | null>(null);
+
+  useEffect(() => {
+    if (!session?.token) {
+      setClub(null);
+      return;
+    }
+    let alive = true;
+    api<ClubData>("/api/club", { token: session.token })
+      .then((data) => { if (alive) setClub(data); })
+      .catch(() => { if (alive) setClub(null); });
+    return () => { alive = false; };
+  }, [session?.token, screen, clubView]);
+
+  async function referClub(code: string) {
+    if (!session?.token) throw new Error("Нет сессии");
+    const data = await api<ClubData>("/api/club/refer", { method: "POST", token: session.token, body: { code } });
+    setClub(data);
+  }
 
   function showScreen(next: Screen, club: ClubView | null = null) {
     const body = document.querySelector(".body");
@@ -573,10 +587,10 @@ export function App() {
                   onOpen={showScreen}
                   onProduct={openProduct}
                   shelf={catalogMode === "live" ? liveProducts.filter((item) => shopSection(item.category) !== "Наборы").slice(0, 4) : []}
-                  spots={catalogMode === "live" ? spotProducts(liveProducts) : []}
                   liquids={catalogMode === "live" ? liveProducts.filter((item) => item.category.trim().toLowerCase() === "liquids" || item.category.trim().toLowerCase() === "liquids1") : []}
                   live={catalogMode === "live"}
                   onClub={(view) => showScreen("profile", view)}
+                  club={club}
                 />
               </section>
             ) : null}
@@ -633,6 +647,8 @@ export function App() {
                   clubView={clubView}
                   onClub={setClubView}
                   onOrders={() => showScreen("orders")}
+                  club={club}
+                  onRefer={referClub}
                   onRole={async (tgId) => {
                     localStorage.setItem("elfin-dev-user", tgId);
                     try {
@@ -761,18 +777,18 @@ function Home({
   onOpen,
   onProduct,
   shelf,
-  spots,
   liquids,
   live,
   onClub,
+  club,
 }: {
   onOpen: (screen: Screen) => void;
   onProduct: (id: string, qty?: number) => void;
   shelf: Product[];
-  spots: Product[];
   liquids: Product[];
   live: boolean;
   onClub: (view: ClubView) => void;
+  club: ClubData | null;
 }) {
   const reduce = useReducedMotion();
   const { t, lang, setLang } = useI18n();
@@ -858,44 +874,45 @@ function Home({
         </div>
       </motion.div>
       {focus === "home" ? (
-        <button type="button" className="home-jump" onClick={() => onOpen("catalog")}>{t("home.all")}</button>
-      ) : null}
-      {focus === "home" && spots.length > 0 ? (
-        <div className="home-spots">
-          {spots.map((item, index) => (
-            <button key={item.id} type="button" className="spot-card" onClick={() => onProduct(item.id)}>
-              <span className="spot-art"><img src={item.catalogImage} alt="" /></span>
-              <span className="spot-copy">
-                <strong>{t(index === 0 ? "home.spotlightNew" : index === 1 ? "home.spotlightPopular" : "home.spotlightBack")}</strong>
-                <em>{lineTitle(item)}</em>
-              </span>
-            </button>
-          ))}
-        </div>
-      ) : null}
-      {focus === "home" ? (
-        <motion.div className="home-promos" variants={sectionItem}>
-          <article className="promo-shot">
-            <img src={`/assets/home/promo/place-${theme}.jpg`} alt="" />
-            <h2>{t("home.together")}</h2>
-            <button type="button" onClick={() => onOpen("catalog")}>{t("home.promoWatch")}</button>
-          </article>
-          <article className="promo-shot">
-            <img src={`/assets/home/promo/discount-${theme}.jpg`} alt="" />
-            <h2>{t("home.discountTitle")}</h2>
-            <button type="button" onClick={() => setTerms(true)}>{t("home.discountAction")}</button>
-          </article>
-          <article className="promo-shot">
-            <img src={`/assets/home/promo/bonus-${theme}.jpg`} alt="" />
-            <h2>{t("home.bonusTitle")}</h2>
-            <button type="button" onClick={() => onClub("club")}>{t("home.bonusAction")}</button>
-          </article>
-          <article className="promo-shot">
-            <img src={`/assets/home/promo/invite-${theme}.jpg`} alt="" />
-            <h2>{t("home.inviteTitle")}</h2>
-            <button type="button" onClick={() => onClub("invite")}>{t("home.inviteAction")}</button>
-          </article>
-        </motion.div>
+        <>
+          <h2 className="home-keep">{t("home.together")}</h2>
+          <div className="home-slides">
+            {[
+              ["/assets/home/slides/restock.jpg", "catalog", "Жидкости"],
+              ["/assets/home/slides/sale.jpg", "catalog", "Все"],
+              ["/assets/home/slides/popular.jpg", "catalog", "Все"],
+              ["/assets/home/slides/new.jpg", "catalog", "Устройства"],
+              ["/assets/home/slides/back.jpg", "catalog", "Жидкости"],
+            ].map(([src, , section]) => (
+              <button key={src} type="button" className="home-slide" onClick={() => openHomeSection(section, onOpen)}>
+                <img src={src} alt="" />
+              </button>
+            ))}
+          </div>
+          <div className="home-cat-head">
+            <h2>{t("home.categories")}</h2>
+            <button type="button" className="home-all" onClick={() => openHomeSection("Все", onOpen)}>{t("home.allCatalog")}</button>
+          </div>
+          <div className="home-cats">
+            {[
+              ["/assets/home/cats/liquids.jpg", "Жидкости"],
+              ["/assets/home/cats/pods.jpg", "POD"],
+              ["/assets/home/cats/cartridges.jpg", "Картриджи"],
+              ["/assets/home/cats/disposables.jpg", "Устройства"],
+              ["/assets/home/cats/sets.jpg", "Наборы"],
+            ].map(([src, section]) => (
+              <button key={section} type="button" className="home-cat" onClick={() => openHomeSection(section, onOpen)}>
+                <img src={src} alt="" />
+              </button>
+            ))}
+          </div>
+          <div className="home-hints">
+            <button type="button" onClick={() => openHomeSection("Наборы", onOpen)}><img src="/assets/home/hints/sets.jpg" alt={t("home.hintSets")} /></button>
+            <button type="button" onClick={() => setTerms(true)}><img src="/assets/home/hints/discount.jpg" alt={t("home.hintDiscount")} /></button>
+            <button type="button" onClick={() => onClub("club")}><img src="/assets/home/hints/bonus.jpg" alt={t("home.bonusTitle")} /></button>
+            <button type="button" onClick={() => onClub("invite")}><img src="/assets/home/hints/invite.jpg" alt={t("home.inviteTitle")} /></button>
+          </div>
+        </>
       ) : null}
       {focus !== "home" ? (
         <div className="home-focus-bar">
@@ -948,6 +965,14 @@ function Home({
               <div className="terms-card" role="dialog" aria-labelledby="home-terms-title">
                 <h2 id="home-terms-title">{t("terms.title")}</h2>
                 <p>{t("terms.body")}</p>
+                {club ? (
+                  <>
+                    <p>{t("terms.client", { level: club.level, points: club.points, spent: club.spent })}</p>
+                    <p>{t("terms.cashback", { percent: club.cashbackPercent })}</p>
+                    <p>{t("terms.referral", { every: club.referralEvery, bonus: club.referralBonus })}</p>
+                    <p>{t("terms.code", { code: club.code })}</p>
+                  </>
+                ) : null}
                 <button type="button" className="terms-close" onClick={() => setTerms(false)}>{t("terms.close")}</button>
               </div>
             </div>,
@@ -1032,6 +1057,8 @@ function Profile({
   clubView,
   onClub,
   onOrders,
+  club,
+  onRefer,
 }: {
   session: Session | null;
   authPhase: AuthPhase;
@@ -1043,6 +1070,8 @@ function Profile({
   clubView: ClubView | null;
   onClub: (view: ClubView | null) => void;
   onOrders: () => void;
+  club: ClubData | null;
+  onRefer: (code: string) => Promise<void>;
 }) {
   const { t, lang, setLang } = useI18n();
   const [langOpen, setLangOpen] = useState(false);
@@ -1066,17 +1095,17 @@ function Profile({
 
   return (
     <div className="facts">
-      {clubView ? <ClubMenu view={clubView} onView={onClub} onBack={() => onClub(null)} /> : (
+      {clubView ? <ClubMenu view={clubView} club={club} onView={onClub} onBack={() => onClub(null)} onRefer={onRefer} /> : (
         <>
           <button type="button" className="club-card" onClick={() => onClub("club")}>
             <span>
               <em>{t("club.brand")}</em>
-              <strong>GOLD</strong>
-              <small>{t("profile.until")}</small>
+              <strong>{club?.level || "—"}</strong>
+              <small>{club?.next ? t("club.toNextLabel", { level: club.next, sum: club.toNext }) : t("club.top")}</small>
             </span>
             <span>
               <em>{t("profile.myPoints")}</em>
-              <strong>72</strong>
+              <strong>{club?.points ?? "—"}</strong>
               <small>{t("profile.more")}</small>
             </span>
           </button>
